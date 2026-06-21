@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 
-export function ConstituencyCombobox({ constituencies, value, onChange }) {
+export function ConstituencyCombobox({ constituencies, value, onChange, ariaLabel = 'Select constituency' }) {
     const [open, setOpen] = useState(false)
 
     const selected = constituencies.find(c => c.id === value)
@@ -30,6 +30,7 @@ export function ConstituencyCombobox({ constituencies, value, onChange }) {
                     variant="outline"
                     role="combobox"
                     aria-expanded={open}
+                    aria-label={ariaLabel}
                     className="w-full justify-between font-normal"
                 >
                     {selected ? selected.name : 'Search constituency...'}

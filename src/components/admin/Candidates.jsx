@@ -1,17 +1,24 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { ConstituencyCombobox } from '@/components/ConstituencyCombobox'
+import { useFetch } from '@/lib/useFetch'
 
 export default function Candidates() {
-    const [candidates, setCandidates] = useState([])
-    const [constituencies, setConstituencies] = useState([])
+    const { data: candidates, loading, error: loadError, reload: loadCandidates } = useFetch('/api/admin/candidates', {
+        initialData: [],
+        errorMessage: 'Could not load candidates. Please refresh the page.',
+    })
+    const { data: constituencies, error: constituenciesError } = useFetch('/api/admin/constituencies', {
+        initialData: [],
+        errorMessage: 'Could not load constituencies. Please refresh the page.',
+    })
     const [search, setSearch] = useState('')
-    const [loading, setLoading] = useState(true)
     const [view, setView] = useState('list') // list | add
     const [form, setForm] = useState({ full_name: '', constituency_id: '', constituency_name: '' })
     const [photo, setPhoto] = useState(null)
@@ -19,21 +26,7 @@ export default function Candidates() {
     const [formError, setFormError] = useState('')
     const [formLoading, setFormLoading] = useState(false)
     const [successMessage, setSuccessMessage] = useState('')
-
-    useEffect(() => {
-        loadCandidates()
-        fetch('/api/admin/constituencies')
-            .then(r => r.json())
-            .then(setConstituencies)
-    }, [])
-
-    async function loadCandidates() {
-        setLoading(true)
-        const res = await fetch('/api/admin/candidates')
-        const data = await res.json()
-        setCandidates(data)
-        setLoading(false)
-    }
+    const [confirmingId, setConfirmingId] = useState(null)
 
     function handlePhotoChange(e) {
         const file = e.target.files[0]
@@ -49,52 +42,63 @@ export default function Candidates() {
         setFormLoading(true)
         setFormError('')
 
-        let photo_url = null
+        try {
+            let photo_url = null
 
-        if (photo) {
-            const formData = new FormData()
-            formData.append('file', photo)
-            formData.append('candidate_name', form.full_name)
-            const uploadRes = await fetch('/api/admin/candidates/upload', {
+            if (photo) {
+                const formData = new FormData()
+                formData.append('file', photo)
+                formData.append('candidate_name', form.full_name)
+                const uploadRes = await fetch('/api/admin/candidates/upload', {
+                    method: 'POST',
+                    body: formData,
+                })
+                const uploadData = await uploadRes.json()
+                if (!uploadRes.ok) { setFormError(uploadData.error); return }
+                photo_url = uploadData.url
+            }
+
+            const res = await fetch('/api/admin/candidates', {
                 method: 'POST',
-                body: formData,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    full_name: form.full_name,
+                    constituency_id: form.constituency_id,
+                    photo_url,
+                }),
             })
-            const uploadData = await uploadRes.json()
-            if (!uploadRes.ok) { setFormError(uploadData.error); setFormLoading(false); return }
-            photo_url = uploadData.url
+            const data = await res.json()
+            if (!res.ok) {
+                setFormError(data.error)
+            } else {
+                setForm({ full_name: '', constituency_id: '', constituency_name: '' })
+                setPhoto(null)
+                setPhotoPreview(null)
+                setView('list')
+                setSuccessMessage('Candidate added successfully')
+                loadCandidates()
+                setTimeout(() => setSuccessMessage(''), 3000)
+            }
+        } catch {
+            setFormError('Something went wrong. Please try again.')
+        } finally {
+            setFormLoading(false)
         }
-
-        const res = await fetch('/api/admin/candidates', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                full_name: form.full_name,
-                constituency_id: form.constituency_id,
-                photo_url,
-            }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-            setFormError(data.error)
-        } else {
-            setForm({ full_name: '', constituency_id: '', constituency_name: '' })
-            setPhoto(null)
-            setPhotoPreview(null)
-            setView('list')
-            setSuccessMessage('Candidate added successfully')
-            loadCandidates()
-            setTimeout(() => setSuccessMessage(''), 3000)
-        }
-        setFormLoading(false)
     }
 
     async function toggleActive(candidate) {
-        await fetch(`/api/admin/candidates/${candidate.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ is_active: !candidate.is_active }),
-        })
-        loadCandidates()
+        setConfirmingId(null)
+        try {
+            const res = await fetch(`/api/admin/candidates/${candidate.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_active: !candidate.is_active }),
+            })
+            if (!res.ok) throw new Error()
+            loadCandidates()
+        } catch {
+            setLoadError('Could not update candidate status. Please try again.')
+        }
     }
 
     const filtered = candidates.filter(c =>
@@ -139,6 +143,7 @@ export default function Candidates() {
             {/* LIST */}
             {view === 'list' && (
                 <div className="space-y-4">
+                    {loadError && <p className="text-sm text-red-600" role="alert" aria-live="polite">{loadError}</p>}
                     <Input
                         placeholder="Search by name or constituency..."
                         value={search}
@@ -158,23 +163,23 @@ export default function Candidates() {
                             <tbody>
                             {loading && (
                                 <tr>
-                                    <td colSpan={4} className="px-5 py-8 text-center text-zinc-400">Loading...</td>
+                                    <td colSpan={4} className="px-5 py-8 text-center text-zinc-500">Loading...</td>
                                 </tr>
                             )}
                             {!loading && filtered.length === 0 && (
                                 <tr>
-                                    <td colSpan={4} className="px-5 py-8 text-center text-zinc-400">No candidates found</td>
+                                    <td colSpan={4} className="px-5 py-8 text-center text-zinc-500">No candidates found</td>
                                 </tr>
                             )}
                             {!loading && filtered.map((c, i) => (
                                 <tr key={c.id} className={i % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}>
                                     <td className="px-5 py-3">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-zinc-100 overflow-hidden flex-shrink-0">
+                                            <div className="relative w-8 h-8 rounded-full bg-zinc-100 overflow-hidden flex-shrink-0">
                                                 {c.photo_url ? (
-                                                    <img src={c.photo_url} alt={c.full_name} className="w-full h-full object-cover" />
+                                                    <Image src={c.photo_url} alt={c.full_name} fill sizes="32px" className="object-cover" />
                                                 ) : (
-                                                    <div className="w-full h-full flex items-center justify-center text-zinc-400 text-xs font-semibold">
+                                                    <div className="w-full h-full flex items-center justify-center text-zinc-500 text-xs font-semibold">
                                                         {c.full_name.charAt(0)}
                                                     </div>
                                                 )}
@@ -194,12 +199,30 @@ export default function Candidates() {
                       </span>
                                     </td>
                                     <td className="px-5 py-3">
-                                        <button
-                                            onClick={() => toggleActive(c)}
-                                            className="text-xs text-zinc-500 hover:text-black underline underline-offset-2"
-                                        >
-                                            {c.is_active ? 'Deactivate' : 'Activate'}
-                                        </button>
+                                        {confirmingId === c.id ? (
+                                            <div className="flex items-center gap-2 whitespace-nowrap">
+                                                <span className="text-xs text-zinc-500">Sure?</span>
+                                                <button
+                                                    onClick={() => toggleActive(c)}
+                                                    className="text-xs font-medium text-black underline underline-offset-2"
+                                                >
+                                                    Confirm
+                                                </button>
+                                                <button
+                                                    onClick={() => setConfirmingId(null)}
+                                                    className="text-xs text-zinc-500 underline underline-offset-2"
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={() => setConfirmingId(c.id)}
+                                                className="text-xs text-zinc-500 hover:text-black underline underline-offset-2"
+                                            >
+                                                {c.is_active ? 'Deactivate' : 'Activate'}
+                                            </button>
+                                        )}
                                     </td>
                                 </tr>
                             ))}
@@ -242,13 +265,15 @@ export default function Candidates() {
                                 onChange={handlePhotoChange}
                             />
                             {photoPreview && (
-                                <div className="w-20 h-20 rounded-full overflow-hidden border border-zinc-200 mt-2">
-                                    <img src={photoPreview} alt="Preview" className="w-full h-full object-cover" />
+                                <div className="relative w-20 h-20 rounded-full overflow-hidden border border-zinc-200 mt-2">
+                                    {/* local blob: preview, not a remote URL — next/image's optimizer can't fetch it */}
+                                    <Image src={photoPreview} alt="Preview" fill sizes="80px" unoptimized className="object-cover" />
                                 </div>
                             )}
                         </div>
 
-                        {formError && <p className="text-sm text-red-600">{formError}</p>}
+                        {constituenciesError && <p className="text-sm text-red-600" role="alert" aria-live="polite">{constituenciesError}</p>}
+                        {formError && <p className="text-sm text-red-600" role="alert" aria-live="polite">{formError}</p>}
 
                         <Button
                             className="w-full bg-black text-white hover:bg-zinc-800 h-11"

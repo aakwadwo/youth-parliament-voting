@@ -11,8 +11,10 @@ import { ConstituencyCombobox } from '@/components/ConstituencyCombobox'
 export default function VotePage() {
     const router = useRouter()
     const [constituencies, setConstituencies] = useState([])
+    const [constituenciesError, setConstituenciesError] = useState('')
     const [error, setError] = useState('')
     const [registered, setRegistered] = useState(false)
+    const [loading, setLoading] = useState(false)
     const [form, setForm] = useState({
         voter_name: '',
         voter_dob: '',
@@ -25,6 +27,7 @@ export default function VotePage() {
         fetch('/api/constituencies')
             .then(r => r.json())
             .then(setConstituencies)
+            .catch(() => setConstituenciesError('Could not load constituencies. Please refresh the page.'))
     }, [])
 
     function updateForm(key, value) {
@@ -47,31 +50,37 @@ export default function VotePage() {
         const err = validate()
         if (err) { setError(err); return }
 
-        const res = await fetch('/api/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                full_name: form.voter_name,
-                voter_dob: form.voter_dob,
-                voter_phone: form.voter_phone,
-                constituency_id: form.constituency_id,
-            }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-            setError(data.error)
-            return
-        }
+        setLoading(true)
+        setError('')
+        try {
+            const res = await fetch('/api/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    full_name: form.voter_name,
+                    voter_dob: form.voter_dob,
+                    voter_phone: form.voter_phone,
+                    constituency_id: form.constituency_id,
+                }),
+            })
+            const data = await res.json()
+            if (!res.ok) {
+                setError(data.error)
+                return
+            }
 
-        sessionStorage.setItem('voter', JSON.stringify({
-            id: data.id,
-            voter_name: data.full_name,
-            voter_dob: data.voter_dob,
-            voter_phone: data.voter_phone,
-            constituency_id: data.constituency_id,
-            constituency_name: form.constituency_name,
-        }))
-        setRegistered(true)
+            sessionStorage.setItem('voter', JSON.stringify({
+                id: data.id,
+                voter_name: data.full_name,
+                constituency_id: data.constituency_id,
+                constituency_name: form.constituency_name,
+            }))
+            setRegistered(true)
+        } catch {
+            setError('Something went wrong. Please try again.')
+        } finally {
+            setLoading(false)
+        }
     }
 
     if (registered) {
@@ -92,7 +101,7 @@ export default function VotePage() {
                     </div>
 
                     <div className="space-y-3">
-                        <h2 className="text-3xl font-semibold text-black">You're registered</h2>
+                        <h2 className="text-3xl font-semibold text-black">You&apos;re registered</h2>
                         <p className="text-zinc-500 text-lg leading-relaxed">
                             Welcome, <span className="text-black font-medium">{form.voter_name}</span>.
                             You are registered to vote in <span className="text-black font-medium">{form.constituency_name}</span>.
@@ -197,19 +206,21 @@ export default function VotePage() {
                             />
                         </div>
 
-                        {error && <p className="text-base text-red-600">{error}</p>}
+                        {constituenciesError && <p className="text-base text-red-600" role="alert" aria-live="polite">{constituenciesError}</p>}
+                        {error && <p className="text-base text-red-600" role="alert" aria-live="polite">{error}</p>}
 
                         <Button
                             className="w-full bg-black text-white hover:bg-zinc-800 h-11 text-base"
                             onClick={handleRegister}
+                            disabled={loading}
                         >
-                            Register
+                            {loading ? 'Registering...' : 'Register'}
                         </Button>
 
                     </CardContent>
                 </Card>
 
-                <p className="text-center text-sm text-zinc-400">
+                <p className="text-center text-sm text-zinc-500">
                     By proceeding you confirm you are a Ghanaian citizen aged 18–35.
                 </p>
 

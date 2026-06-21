@@ -1,17 +1,15 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useFetch } from '@/lib/useFetch'
 
 export default function Dashboard() {
-    const [stats, setStats] = useState(null)
+    const { data: stats, loading, error } = useFetch('/api/admin/stats', {
+        errorMessage: 'Could not load dashboard stats. Please refresh the page.',
+    })
 
-    useEffect(() => {
-        fetch('/api/admin/stats')
-            .then(r => r.json())
-            .then(setStats)
-    }, [])
+    if (error) return <p className="text-sm text-red-600" role="alert" aria-live="polite">{error}</p>
 
-    if (!stats) return (
+    if (loading || !stats) return (
         <div className="space-y-8">
             <div className="h-8 w-48 bg-zinc-100 rounded-lg animate-pulse" />
             <div className="grid grid-cols-3 gap-4">
@@ -47,7 +45,7 @@ export default function Dashboard() {
                     <p className="text-sm font-medium text-black mt-1">
                         {stats.opensAt ? new Date(stats.opensAt).toLocaleString() : '—'}
                     </p>
-                    <p className="text-xs text-zinc-400">
+                    <p className="text-xs text-zinc-500">
                         to {stats.closesAt ? new Date(stats.closesAt).toLocaleString() : '—'}
                     </p>
                 </div>

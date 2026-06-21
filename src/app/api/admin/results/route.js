@@ -1,45 +1,35 @@
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { createAdminClient } from '@/lib/supabase-admin'
+import { dbError } from '@/lib/api-error'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
-    const supabase = await createServerSupabaseClient()
+    const supabase = createAdminClient()
 
-    const { data: votes, error } = await supabase
-        .from('votes')
-        .select('candidate_id, constituency_id, candidates(full_name), constituencies(name)')
+    // get_results() aggregates with GROUP BY in Postgres (see
+    // migrations/0004_add_get_results_function.up.sql) — this route never
+    // pulls individual vote rows into memory, so it scales independently of
+    // how many ballots have been cast.
+    const { data: rows, error } = await supabase.rpc('get_results')
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return dbError(error, 'Could not load results.')
 
-    const map = {}
+    const map = new Map()
 
-    for (const vote of votes) {
-        const cid = vote.constituency_id
-        const cname = vote.constituencies?.name || 'Unknown'
-        const candId = vote.candidate_id
-        const candName = vote.candidates?.full_name || 'Unknown'
-
-        if (!map[cid]) {
-            map[cid] = {
-                constituency_id: cid,
-                constituency_name: cname,
+    for (const row of rows) {
+        if (!map.has(row.constituency_id)) {
+            map.set(row.constituency_id, {
+                constituency_id: row.constituency_id,
+                constituency_name: row.constituency_name,
                 total_votes: 0,
-                candidates: {},
-            }
+                candidates: [],
+            })
         }
-
-        map[cid].total_votes++
-
-        if (!map[cid].candidates[candId]) {
-            map[cid].candidates[candId] = { name: candName, votes: 0 }
-        }
-
-        map[cid].candidates[candId].votes++
+        const entry = map.get(row.constituency_id)
+        entry.total_votes += Number(row.votes)
+        entry.candidates.push({ name: row.candidate_name, votes: Number(row.votes) })
     }
 
-    const result = Object.values(map).map(c => ({
-        ...c,
-        candidates: Object.values(c.candidates).sort((a, b) => b.votes - a.votes),
-    })).sort((a, b) => b.total_votes - a.total_votes)
-
-    return NextResponse.json(result)
+    // get_results() already orders by constituency name then votes desc;
+    // Map preserves that insertion order, so no further sorting is needed.
+    return NextResponse.json(Array.from(map.values()))
 }

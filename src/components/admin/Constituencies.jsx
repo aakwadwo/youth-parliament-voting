@@ -1,15 +1,18 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
+import { useFetch } from '@/lib/useFetch'
 
 export default function Constituencies() {
-    const [constituencies, setConstituencies] = useState([])
+    const { data: constituencies, loading, error: loadError, reload: loadConstituencies } = useFetch('/api/admin/constituencies', {
+        initialData: [],
+        errorMessage: 'Could not load constituencies. Please refresh the page.',
+    })
     const [search, setSearch] = useState('')
-    const [loading, setLoading] = useState(true)
     const [view, setView] = useState('list') // list | add | import
     const [form, setForm] = useState({ name: '', region: '', code: '' })
     const [formError, setFormError] = useState('')
@@ -18,18 +21,6 @@ export default function Constituencies() {
     const [csvLoading, setCsvLoading] = useState(false)
     const [successMessage, setSuccessMessage] = useState('')
 
-    useEffect(() => {
-        loadConstituencies()
-    }, [])
-
-    async function loadConstituencies() {
-        setLoading(true)
-        const res = await fetch('/api/admin/constituencies')
-        const data = await res.json()
-        setConstituencies(data)
-        setLoading(false)
-    }
-
     async function handleAdd() {
         if (!form.name.trim() || !form.region.trim() || !form.code) {
             setFormError('All fields are required')
@@ -37,22 +28,27 @@ export default function Constituencies() {
         }
         setFormLoading(true)
         setFormError('')
-        const res = await fetch('/api/admin/constituencies', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(form),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-            setFormError(data.error)
-        } else {
-            setForm({ name: '', region: '', code: '' })
-            setView('list')
-            setSuccessMessage('Constituency added successfully')
-            loadConstituencies()
-            setTimeout(() => setSuccessMessage(''), 3000)
+        try {
+            const res = await fetch('/api/admin/constituencies', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(form),
+            })
+            const data = await res.json()
+            if (!res.ok) {
+                setFormError(data.error)
+            } else {
+                setForm({ name: '', region: '', code: '' })
+                setView('list')
+                setSuccessMessage('Constituency added successfully')
+                loadConstituencies()
+                setTimeout(() => setSuccessMessage(''), 3000)
+            }
+        } catch {
+            setFormError('Something went wrong. Please try again.')
+        } finally {
+            setFormLoading(false)
         }
-        setFormLoading(false)
     }
 
     async function handleCSV(e) {
@@ -77,21 +73,26 @@ export default function Constituencies() {
             return
         }
 
-        const res = await fetch('/api/admin/constituencies/bulk', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ constituencies: parsed }),
-        })
-        const data = await res.json()
-        if (!res.ok) {
-            setCsvError(data.error)
-        } else {
-            setView('list')
-            setSuccessMessage(`${data.count} constituencies imported successfully`)
-            loadConstituencies()
-            setTimeout(() => setSuccessMessage(''), 3000)
+        try {
+            const res = await fetch('/api/admin/constituencies/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ constituencies: parsed }),
+            })
+            const data = await res.json()
+            if (!res.ok) {
+                setCsvError(data.error)
+            } else {
+                setView('list')
+                setSuccessMessage(`${data.count} constituencies imported successfully`)
+                loadConstituencies()
+                setTimeout(() => setSuccessMessage(''), 3000)
+            }
+        } catch {
+            setCsvError('Something went wrong. Please try again.')
+        } finally {
+            setCsvLoading(false)
         }
-        setCsvLoading(false)
     }
 
     const filtered = constituencies.filter(c =>
@@ -146,6 +147,7 @@ export default function Constituencies() {
             {/* LIST VIEW */}
             {view === 'list' && (
                 <div className="space-y-4">
+                    {loadError && <p className="text-sm text-red-600" role="alert" aria-live="polite">{loadError}</p>}
                     <Input
                         placeholder="Search by name or region..."
                         value={search}
@@ -165,24 +167,24 @@ export default function Constituencies() {
                             <tbody>
                             {loading && (
                                 <tr>
-                                    <td colSpan={4} className="px-5 py-8 text-center text-zinc-400">Loading...</td>
+                                    <td colSpan={4} className="px-5 py-8 text-center text-zinc-500">Loading...</td>
                                 </tr>
                             )}
                             {!loading && filtered.length === 0 && (
                                 <tr>
-                                    <td colSpan={4} className="px-5 py-8 text-center text-zinc-400">No constituencies found</td>
+                                    <td colSpan={4} className="px-5 py-8 text-center text-zinc-500">No constituencies found</td>
                                 </tr>
                             )}
                             {!loading && filtered.map((c, i) => (
                                 <tr key={c.id} className={i % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}>
-                                    <td className="px-5 py-3 text-zinc-400 font-mono text-xs">{c.code}</td>
+                                    <td className="px-5 py-3 text-zinc-500 font-mono text-xs">{c.code}</td>
                                     <td className="px-5 py-3 font-medium text-black">{c.name}</td>
                                     <td className="px-5 py-3 text-zinc-500">{c.region}</td>
                                     <td className="px-5 py-3">
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                 c.candidates?.[0]?.count > 0
                     ? 'bg-green-50 text-[#006B3F] border border-green-200'
-                    : 'bg-zinc-100 text-zinc-400 border border-zinc-200'
+                    : 'bg-zinc-100 text-zinc-500 border border-zinc-200'
             }`}>
               {c.candidates?.[0]?.count ?? 0}
             </span>
@@ -227,7 +229,7 @@ export default function Constituencies() {
                                 onChange={e => setForm(p => ({ ...p, code: e.target.value }))}
                             />
                         </div>
-                        {formError && <p className="text-sm text-red-600">{formError}</p>}
+                        {formError && <p className="text-sm text-red-600" role="alert" aria-live="polite">{formError}</p>}
                         <Button
                             className="w-full bg-black text-white hover:bg-zinc-800 h-11"
                             onClick={handleAdd}
@@ -264,7 +266,7 @@ export default function Constituencies() {
                                 disabled={csvLoading}
                             />
                         </div>
-                        {csvError && <p className="text-sm text-red-600">{csvError}</p>}
+                        {csvError && <p className="text-sm text-red-600" role="alert" aria-live="polite">{csvError}</p>}
                         {csvLoading && <p className="text-sm text-zinc-500">Importing...</p>}
                     </CardContent>
                 </Card>

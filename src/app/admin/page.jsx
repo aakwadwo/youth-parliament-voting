@@ -26,7 +26,9 @@ const sections = {
 
 export default function AdminPage() {
     const [active, setActive] = useState('dashboard')
-    const [isDesktop, setIsDesktop] = useState(true)
+    const [isDesktop, setIsDesktop] = useState(
+        () => typeof window !== 'undefined' && window.innerWidth >= 1024
+    )
     const router = useRouter()
 
     const ActiveSection = sections[active]
@@ -73,7 +75,7 @@ export default function AdminPage() {
                         <div className="h-1 w-6 bg-[#006B3F]" />
                     </div>
                     <p className="text-sm font-semibold text-black leading-tight">Youth Parliament</p>
-                    <p className="text-xs text-zinc-400">Admin portal</p>
+                    <p className="text-xs text-zinc-500">Admin portal</p>
                 </div>
 
                 <nav className="flex-1 p-4 space-y-1">

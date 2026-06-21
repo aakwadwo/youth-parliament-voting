@@ -1,31 +1,32 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { useFetch } from '@/lib/useFetch'
 
 export default function Results() {
-    const [results, setResults] = useState([])
-    const [loading, setLoading] = useState(true)
+    const { data: results, loading, error } = useFetch('/api/admin/results', {
+        initialData: [],
+        errorMessage: 'Could not load results. Please refresh the page.',
+    })
+    const [exportError, setExportError] = useState('')
     const [search, setSearch] = useState('')
 
-    useEffect(() => {
-        fetch('/api/admin/results')
-            .then(r => r.json())
-            .then(data => {
-                setResults(data)
-                setLoading(false)
-            })
-    }, [])
-
     async function handleExport() {
-        const res = await fetch('/api/admin/results/export')
-        const blob = await res.blob()
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = 'results.csv'
-        a.click()
-        URL.revokeObjectURL(url)
+        setExportError('')
+        try {
+            const res = await fetch('/api/admin/results/export')
+            if (!res.ok) throw new Error()
+            const blob = await res.blob()
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = 'results.csv'
+            a.click()
+            URL.revokeObjectURL(url)
+        } catch {
+            setExportError('Could not export results. Please try again.')
+        }
     }
 
     const filtered = results.filter(r =>
@@ -49,6 +50,9 @@ export default function Results() {
                 </Button>
             </div>
 
+            {error && <p className="text-sm text-red-600" role="alert" aria-live="polite">{error}</p>}
+            {exportError && <p className="text-sm text-red-600" role="alert" aria-live="polite">{exportError}</p>}
+
             <input
                 placeholder="Search constituency..."
                 value={search}
@@ -66,7 +70,7 @@ export default function Results() {
 
             {!loading && filtered.length === 0 && (
                 <div className="bg-white border border-zinc-200 rounded-xl px-5 py-12 text-center">
-                    <p className="text-zinc-400 text-sm">No results found</p>
+                    <p className="text-zinc-500 text-sm">No results found</p>
                 </div>
             )}
 
@@ -75,7 +79,7 @@ export default function Results() {
                     <div className="px-5 py-4 border-b border-zinc-100 flex items-center justify-between">
                         <div>
                             <p className="font-medium text-black">{constituency.constituency_name}</p>
-                            <p className="text-xs text-zinc-400 mt-0.5">{constituency.total_votes} vote{constituency.total_votes !== 1 ? 's' : ''}</p>
+                            <p className="text-xs text-zinc-500 mt-0.5">{constituency.total_votes} vote{constituency.total_votes !== 1 ? 's' : ''}</p>
                         </div>
                     </div>
                     <div className="divide-y divide-zinc-50">

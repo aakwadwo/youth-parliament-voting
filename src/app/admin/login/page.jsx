@@ -77,7 +77,7 @@ export default function AdminLoginPage() {
                             />
                         </div>
 
-                        {error && <p className="text-base text-red-600">{error}</p>}
+                        {error && <p className="text-base text-red-600" role="alert" aria-live="polite">{error}</p>}
 
                         <Button
                             className="w-full bg-black text-white hover:bg-zinc-800 h-11 text-base"
@@ -90,7 +90,7 @@ export default function AdminLoginPage() {
                     </CardContent>
                 </Card>
 
-                <p className="text-center text-xs text-zinc-400">
+                <p className="text-center text-xs text-zinc-500">
                     Restricted access. Authorised personnel only.
                 </p>
 

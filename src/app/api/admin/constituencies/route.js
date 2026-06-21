@@ -1,31 +1,44 @@
-import { createServerSupabaseClient } from '@/lib/supabase-server'
+import { createAdminClient } from '@/lib/supabase-admin'
+import { jsonError, dbError, PG_UNIQUE_VIOLATION } from '@/lib/api-error'
 import { NextResponse } from 'next/server'
 
 export async function GET() {
-    const supabase = await createServerSupabaseClient()
+    const supabase = createAdminClient()
     const { data, error } = await supabase
         .from('constituencies')
-        .select('*, candidates(count)')
+        .select('id, name, region, code, candidates(count)')
         .order('name')
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) return dbError(error, 'Could not load constituencies.')
     return NextResponse.json(data)
 }
 
 export async function POST(request) {
-    const body = await request.json()
-    const { name, region, code } = body
-
-    if (!name || !region || !code) {
-        return NextResponse.json({ error: 'Name, region and code are required' }, { status: 400 })
+    let body
+    try {
+        body = await request.json()
+    } catch {
+        return jsonError('Invalid request body', 400)
     }
 
-    const supabase = await createServerSupabaseClient()
+    const { name, region, code } = body ?? {}
+    const codeNum = parseInt(code, 10)
+
+    if (!name?.trim() || !region?.trim() || !Number.isInteger(codeNum) || codeNum < 0) {
+        return jsonError('Name, region and a valid numeric code are required', 400)
+    }
+
+    const supabase = createAdminClient()
     const { data, error } = await supabase
         .from('constituencies')
-        .insert({ name, region, code: parseInt(code) })
-        .select()
+        .insert({ name: name.trim(), region: region.trim(), code: codeNum })
+        .select('id, name, region, code')
         .single()
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+        if (error.code === PG_UNIQUE_VIOLATION) {
+            return jsonError('A constituency with this code already exists', 409)
+        }
+        return dbError(error, 'Could not add constituency.')
+    }
     return NextResponse.json(data)
 }

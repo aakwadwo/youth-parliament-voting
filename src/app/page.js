@@ -47,12 +47,12 @@ export default function Home() {
                 Already registered? Login
               </Button>
             </Link>
-            <p className="text-xs text-zinc-400">
+            <p className="text-xs text-zinc-500">
               You will need your full name, date of birth, and phone number.
             </p>
           </div>
 
-          <p className="text-xs text-zinc-300">
+          <p className="text-xs text-zinc-500">
             National Youth Parliament of Ghana &copy; {new Date().getFullYear()}
           </p>
 

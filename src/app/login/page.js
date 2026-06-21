@@ -13,7 +13,7 @@ export default function LoginPage() {
     const [form, setForm] = useState({ voter_phone: '', voter_dob: '' })
     const [error, setError] = useState('')
     const [loading, setLoading] = useState(false)
-    const [votedFor, setVotedFor] = useState(null)
+    const [alreadyVoted, setAlreadyVoted] = useState(false)
     const [voterName, setVoterName] = useState('')
 
     async function handleLogin() {
@@ -34,7 +34,7 @@ export default function LoginPage() {
                 setError(data.error)
             } else if (data.already_voted) {
                 setVoterName(data.voter.full_name)
-                setVotedFor(data.voted_for)
+                setAlreadyVoted(true)
             } else {
                 sessionStorage.setItem('voter', JSON.stringify(data.voter))
                 router.push('/vote/candidates')
@@ -46,7 +46,7 @@ export default function LoginPage() {
         }
     }
 
-    if (votedFor) {
+    if (alreadyVoted) {
         return (
             <main className="min-h-screen bg-white flex flex-col items-center justify-center px-4 py-12">
                 <div className="max-w-md w-full text-center space-y-6">
@@ -66,12 +66,11 @@ export default function LoginPage() {
                             Thank you, <span className="text-black font-medium">{voterName}</span>. Your vote has been recorded.
                         </p>
                     </div>
-                    <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-5 text-left space-y-3">
-                        <p className="text-sm font-medium text-zinc-700">Your ballot</p>
-                        <div className="flex justify-between text-sm py-2">
-                            <span className="text-zinc-500">Candidate voted for</span>
-                            <span className="text-black font-medium">{votedFor}</span>
-                        </div>
+                    <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-5 text-left space-y-2">
+                        <p className="text-sm font-medium text-zinc-700">Your ballot is anonymous</p>
+                        <p className="text-sm text-zinc-500 leading-relaxed">
+                            We record that you voted, but not who you voted for — not even we can look that up.
+                        </p>
                     </div>
                     <Link href="/">
                         <Button variant="outline" className="w-full h-11 text-base">
@@ -126,7 +125,7 @@ export default function LoginPage() {
                             />
                         </div>
 
-                        {error && <p className="text-base text-red-600">{error}</p>}
+                        {error && <p className="text-base text-red-600" role="alert" aria-live="polite">{error}</p>}
 
                         <Button
                             className="w-full bg-black text-white hover:bg-zinc-800 h-11 text-base"
@@ -139,7 +138,7 @@ export default function LoginPage() {
                     </CardContent>
                 </Card>
 
-                <p className="text-center text-sm text-zinc-400">
+                <p className="text-center text-sm text-zinc-500">
                     Not registered yet?{' '}
                     <Link href="/vote" className="text-black underline underline-offset-2">
                         Register here

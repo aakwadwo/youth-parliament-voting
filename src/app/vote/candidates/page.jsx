@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 
@@ -12,17 +13,27 @@ export default function CandidatesPage() {
     const [selectedCandidate, setSelectedCandidate] = useState(null)
     const [step, setStep] = useState('candidates')
     const [loading, setLoading] = useState(false)
+    const [candidatesLoading, setCandidatesLoading] = useState(true)
+    const [candidatesError, setCandidatesError] = useState('')
     const [error, setError] = useState('')
 
     useEffect(() => {
-        const saved = sessionStorage.getItem('voter')
-        if (!saved) { router.push('/vote'); return }
-        const voterData = JSON.parse(saved)
+        let voterData
+        try {
+            const saved = sessionStorage.getItem('voter')
+            if (!saved) { router.push('/vote'); return }
+            voterData = JSON.parse(saved)
+        } catch {
+            router.push('/vote')
+            return
+        }
         setVoter(voterData)
         fetch(`/api/candidates?constituency_id=${voterData.constituency_id}`)
             .then(r => r.json())
             .then(setCandidates)
-    }, [])
+            .catch(() => setCandidatesError('Could not load candidates. Please refresh the page.'))
+            .finally(() => setCandidatesLoading(false))
+    }, [router])
 
     async function handleSubmit() {
         setLoading(true)
@@ -31,15 +42,18 @@ export default function CandidatesPage() {
             const res = await fetch('/api/vote', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    voter_id: voter.id,
-                    candidate_id: selectedCandidate.id,
-                    constituency_id: voter.constituency_id,
-                }),
+                body: JSON.stringify({ candidate_id: selectedCandidate.id }),
             })
             const data = await res.json()
             if (!res.ok) {
-                setError(data.error)
+                if (res.status === 409 || res.status === 401) {
+                    // Voter has already voted, or their session expired after voting elsewhere.
+                    // Either way they must not be able to re-enter the voting flow.
+                    sessionStorage.removeItem('voter')
+                    setStep('already-voted')
+                } else {
+                    setError(data.error)
+                }
             } else {
                 sessionStorage.removeItem('voter')
                 setStep('success')
@@ -75,11 +89,20 @@ export default function CandidatesPage() {
                             </p>
                         </div>
 
+                        {candidatesError && <p className="text-base text-red-600" role="alert" aria-live="polite">{candidatesError}</p>}
+
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                            {candidates.length === 0 && (
-                                <p className="text-zinc-400 text-base col-span-full">No candidates found for this constituency.</p>
+                            {candidatesLoading && (
+                                <>
+                                    <div className="h-32 sm:h-44 bg-zinc-100 rounded-xl animate-pulse" />
+                                    <div className="h-32 sm:h-44 bg-zinc-100 rounded-xl animate-pulse" />
+                                    <div className="h-32 sm:h-44 bg-zinc-100 rounded-xl animate-pulse" />
+                                </>
                             )}
-                            {candidates.map(candidate => (
+                            {!candidatesLoading && candidates.length === 0 && (
+                                <p className="text-zinc-500 text-base col-span-full">No candidates found for this constituency.</p>
+                            )}
+                            {!candidatesLoading && candidates.map(candidate => (
                                 <button
                                     key={candidate.id}
                                     onClick={() => setSelectedCandidate(prev => prev?.id === candidate.id ? null : candidate)}
@@ -89,12 +112,14 @@ export default function CandidatesPage() {
                                             : 'border-zinc-200 hover:border-zinc-400'
                                     }`}
                                 >
-                                    <div className="w-24 h-24 sm:w-full sm:aspect-[3/4] bg-white overflow-hidden flex-shrink-0" style={{height: 'auto'}}>
+                                    <div className="relative w-24 h-24 sm:w-full sm:h-auto sm:aspect-[3/4] bg-white overflow-hidden flex-shrink-0">
                                         {candidate.photo_url ? (
-                                            <img
+                                            <Image
                                                 src={candidate.photo_url}
                                                 alt={candidate.full_name}
-                                                className="w-full h-full object-contain bg-white"
+                                                fill
+                                                sizes="(min-width: 640px) 33vw, 96px"
+                                                className="object-contain bg-white"
                                             />
                                         ) : (
                                             <div className="w-full h-full flex items-end justify-center overflow-hidden">
@@ -168,7 +193,7 @@ export default function CandidatesPage() {
                                 </p>
                             </div>
 
-                            {error && <p className="text-base text-red-600">{error}</p>}
+                            {error && <p className="text-base text-red-600" role="alert" aria-live="polite">{error}</p>}
 
                             <div className="flex gap-3">
                                 <Button
@@ -224,7 +249,35 @@ export default function CandidatesPage() {
                             </ul>
                         </div>
 
-                        <p className="text-sm text-zinc-400">You may now close this tab.</p>
+                        <p className="text-sm text-zinc-500">You may now close this tab.</p>
+
+                    </div>
+                )}
+
+                {/* ALREADY VOTED */}
+                {step === 'already-voted' && (
+                    <div className="text-center space-y-6">
+
+                        <div className="flex justify-center">
+                            <div className="h-2 w-16 sm:w-20 bg-[#CF0A0A]" />
+                            <div className="h-2 w-16 sm:w-20 bg-[#FCD20F]" />
+                            <div className="h-2 w-16 sm:w-20 bg-[#006B3F]" />
+                        </div>
+
+                        <div className="space-y-2">
+                            <h2 className="text-2xl font-semibold text-black">You have already voted</h2>
+                            <p className="text-zinc-500 text-base leading-relaxed">
+                                Our records show a vote has already been recorded for this voter. You cannot vote again.
+                            </p>
+                        </div>
+
+                        <Button
+                            className="w-full h-11 text-base"
+                            variant="outline"
+                            onClick={() => router.push('/')}
+                        >
+                            Back to home
+                        </Button>
 
                     </div>
                 )}
