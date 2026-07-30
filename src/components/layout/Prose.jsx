@@ -20,6 +20,14 @@ export function Prose({ className, children }) {
                 '[&_ul]:mt-3 [&_ul]:space-y-2 [&_ul]:pl-5 [&_ul]:text-muted-foreground',
                 '[&_li]:list-disc [&_li]:marker:text-border-strong',
                 '[&_a]:font-medium [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4',
+                // An address like accessibility@youthparliament.gov.gh is a
+                // single unbreakable word ~36 characters long. Inside a 320px
+                // viewport there is nowhere for it to wrap, so it pushed the
+                // page 10px wider than the screen and every one of these pages
+                // scrolled sideways. `anywhere` rather than `break-word` so the
+                // break is taken while measuring the line, not only after the
+                // word has already been found not to fit on a line of its own.
+                '[&_a]:[overflow-wrap:anywhere]',
                 // A term sits tight to its own definition and further from the
                 // previous pair. Even spacing between every child of the list
                 // makes the grouping ambiguous: each term looks equally

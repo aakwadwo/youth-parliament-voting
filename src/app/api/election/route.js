@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { createAdminClient } from '@/lib/supabase-admin'
 import { dbError } from '@/lib/api-error'
+import { ELECTION_NAME } from '@/lib/election'
 
 /**
  * Public election status.
@@ -39,7 +40,7 @@ export async function GET() {
 
     return NextResponse.json(
         {
-            electionName: data?.election_name ?? 'National Youth Parliament Election',
+            electionName: data?.election_name ?? ELECTION_NAME,
             status,
             isOpen: status === 'open',
             opensAt: data?.voting_opens_at ?? null,

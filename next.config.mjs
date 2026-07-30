@@ -29,9 +29,17 @@ const nextConfig = {
         dangerouslyAllowSVG: false,
     },
 
-    // pdfkit reads its font metrics from disk at require time; tracing them
-    // explicitly keeps the report export working on a serverless deployment,
-    // where untraced files are not included in the bundle.
+    // pdfkit resolves its built-in AFM font metrics relative to its own
+    // __dirname. Bundled into the server chunk that __dirname is rewritten to a
+    // synthetic '/ROOT/...' prefix, so `new PDFDocument()` threw ENOENT on
+    // Helvetica.afm before it had drawn anything — every PDF export returned
+    // 500 in a production build while Excel and CSV, which touch no fonts,
+    // succeeded. Keeping pdfkit out of the bundle leaves it a plain node_modules
+    // require with a real __dirname.
+    serverExternalPackages: ['pdfkit'],
+
+    // Belt and braces for serverless: the metrics live in a directory nothing
+    // statically imports, so file tracing has to be told to ship them.
     outputFileTracingIncludes: {
         '/api/admin/results/export': ['./node_modules/pdfkit/js/data/**'],
     },

@@ -1,5 +1,6 @@
 import { Inter } from 'next/font/google'
 import './globals.css'
+import { ELECTION_NAME, ORGANISATION_NAME } from '@/lib/election'
 
 // One variable font, self-hosted and preloaded by next/font. Replaces the
 // previous setup, which downloaded two Geist families that no CSS referenced
@@ -11,9 +12,35 @@ const inter = Inter({
     variable: '--font-inter',
 })
 
-const SITE_NAME = 'National Youth Parliament Ghana'
+/**
+ * Every page renders per request.
+ *
+ * This is load-bearing, not a performance oversight. src/proxy.js issues a CSP
+ * of `script-src 'self' 'nonce-…' 'strict-dynamic'`, and under 'strict-dynamic'
+ * a browser *ignores* 'self' — every script tag has to carry that request's
+ * nonce or it is blocked. Next.js can only stamp the nonce onto its script tags
+ * while rendering the request that produced it.
+ *
+ * Without this line every page in the app was prerendered at build time, so the
+ * HTML shipped with no nonce at all while the response header carried a fresh
+ * one. The result in production was a page whose JavaScript never executed —
+ * silently, because a blocked script is a console warning, not a server error.
+ * `/admin` was where it showed most plainly: the login form sits behind
+ * useSearchParams(), so its HTML is a client-side-rendering bailout, and with
+ * the scripts blocked the page rendered nothing at all.
+ *
+ * Dev never reproduced it: the dev CSP uses 'unsafe-inline' (React Refresh
+ * needs it), which has no strict-dynamic and no nonce requirement.
+ *
+ * The cost is CDN caching of the four prose pages. That is genuinely all that
+ * was static — every other screen is a client component driving an API.
+ */
+export const dynamic = 'force-dynamic'
+
+const SITE_NAME = ORGANISATION_NAME
 const DESCRIPTION =
-    'The official voting platform for National Youth Parliament of Ghana elections. Register, verify your eligibility, and cast one secret ballot in your constituency.'
+    `The official voting platform for the ${ELECTION_NAME}. Register, verify your eligibility, ` +
+    'and cast one secret ballot in your constituency.'
 
 // Absolute URLs for social/preview images. NEXT_PUBLIC_SITE_URL is the
 // canonical production domain; VERCEL_URL covers preview deployments, which
@@ -25,8 +52,8 @@ const siteUrl =
 export const metadata = {
     metadataBase: new URL(siteUrl),
     title: {
-        default: `${SITE_NAME} — Official Voting Platform`,
-        template: `%s — ${SITE_NAME}`,
+        default: `${ELECTION_NAME} — Official Voting Platform`,
+        template: `%s — ${ELECTION_NAME}`,
     },
     description: DESCRIPTION,
     applicationName: SITE_NAME,
@@ -40,7 +67,7 @@ export const metadata = {
     },
     manifest: '/manifest.webmanifest',
     openGraph: {
-        title: `${SITE_NAME} — Official Voting Platform`,
+        title: `${ELECTION_NAME} — Official Voting Platform`,
         description: DESCRIPTION,
         siteName: SITE_NAME,
         locale: 'en_GH',

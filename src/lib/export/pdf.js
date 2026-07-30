@@ -2,6 +2,7 @@ import path from 'node:path'
 import PDFDocument from 'pdfkit'
 
 import { formatDateTime } from '@/lib/election-report'
+import { ORGANISATION_NAME } from '@/lib/election'
 
 /**
  * The official election report, as a branded PDF.
@@ -536,9 +537,9 @@ export function renderReportPdf(report) {
             bufferPages: true,
             info: {
                 Title: `${report.meta.electionName} — Official Election Report`,
-                Author: 'National Youth Parliament of Ghana',
+                Author: ORGANISATION_NAME,
                 Subject: 'Election results and turnout',
-                Creator: 'National Youth Parliament Voting Platform',
+                Creator: `${ORGANISATION_NAME} Voting Platform`,
                 CreationDate: new Date(report.meta.generatedAt),
             },
         })

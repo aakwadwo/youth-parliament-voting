@@ -10,6 +10,7 @@ import { Field } from '@/components/ui/field'
 import { Alert, LiveRegion } from '@/components/ui/alert'
 import { Spinner } from '@/components/ui/feedback'
 import { BrandMark, TricolourRule } from '@/components/brand/BrandMark'
+import { ELECTION_NAME } from '@/lib/election'
 
 function AdminLoginForm() {
     const router = useRouter()
@@ -70,9 +71,7 @@ function AdminLoginForm() {
                         <BrandMark height={52} priority />
                         <div className="space-y-1">
                             <h1 className="text-title font-semibold">Admin portal</h1>
-                            <p className="text-sm text-muted-foreground">
-                                National Youth Parliament Ghana
-                            </p>
+                            <p className="text-sm text-muted-foreground">{ELECTION_NAME}</p>
                         </div>
                     </div>
 

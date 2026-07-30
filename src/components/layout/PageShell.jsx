@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 import { cn } from '@/lib/utils'
 import { BrandMark, TricolourRule } from '@/components/brand/BrandMark'
+import { ORGANISATION_NAME, ORGANISATION_SHORT_NAME } from '@/lib/election'
 
 const FOOTER_LINKS = [
     { href: '/privacy', label: 'Privacy' },
@@ -20,7 +21,7 @@ export function SiteHeader({ className }) {
                 >
                     <BrandMark height={32} priority />
                     <span className="text-[0.9375rem] font-semibold tracking-tight">
-                        Youth Parliament Ghana
+                        {ORGANISATION_SHORT_NAME}
                     </span>
                     <span className="sr-only">, return to the home page</span>
                 </Link>
@@ -87,7 +88,7 @@ export function SiteFooter({ className }) {
                 </nav>
 
                 <p className="mt-5 text-sm leading-relaxed text-muted-foreground">
-                    National Youth Parliament of Ghana
+                    {ORGANISATION_NAME}
                     <br />
                     &copy; {new Date().getFullYear()}. Built and operated by the electoral
                     secretariat.

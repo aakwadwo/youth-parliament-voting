@@ -10,6 +10,8 @@
  * individual ballots, so report cost is independent of turnout.
  */
 
+import { ELECTION_NAME } from '@/lib/election'
+
 /** A tie is a genuine election outcome, so winners is a list, not a value. */
 function resolveWinners(candidates) {
     const contested = candidates.filter((c) => c.votes > 0)
@@ -120,7 +122,7 @@ export async function buildElectionReport(supabase, { generatedBy = null } = {})
 
     return {
         meta: {
-            electionName: settings.election_name ?? 'National Youth Parliament Election',
+            electionName: settings.election_name ?? ELECTION_NAME,
             description: settings.description ?? null,
             opensAt: settings.voting_opens_at ?? null,
             closesAt: settings.voting_closes_at ?? null,

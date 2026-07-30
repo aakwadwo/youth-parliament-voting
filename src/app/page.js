@@ -5,9 +5,15 @@ import { TricolourRule } from '@/components/brand/BrandMark'
 import { SiteHeader, SiteFooter } from '@/components/layout/PageShell'
 import { ElectionStatusPanel } from '@/components/ElectionStatusBanner'
 import { MIN_AGE, MAX_AGE } from '@/lib/validation'
+import { ELECTION_NAME } from '@/lib/election'
 
+// Deliberately no `title` override. A title.template only applies to *child*
+// segments, never to the page sitting in the same segment as the layout that
+// declares it — so the override this page used to carry ("Official Voting
+// Platform") was emitted verbatim, and the front page was the one page whose
+// tab and search result never named the election.
 export const metadata = {
-    title: 'Official Voting Platform',
+    description: `Register and vote in the ${ELECTION_NAME}.`,
 }
 
 /**
@@ -36,9 +42,7 @@ export default function Home() {
                         line and putting the action in the subheading removes
                         the possibility, and reads more like a service and less
                         like a slogan. */}
-                    <h1 className="text-display font-semibold text-pretty">
-                        National Youth Parliament election
-                    </h1>
+                    <h1 className="text-display font-semibold text-pretty">{ELECTION_NAME}</h1>
                     <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted-foreground">
                         Register with your name, date of birth and phone number, then vote for a
                         candidate standing in your constituency.
@@ -85,9 +89,13 @@ export default function Home() {
                                     +233 30 212 3456
                                 </a>{' '}
                                 or{' '}
+                                {/* Clears a 320px line by ~2px with the system
+                                    fallback font loaded; allow it to break
+                                    rather than leave the front door of the
+                                    service one metric change from overflowing. */}
                                 <a
                                     href="mailto:elections@youthparliament.gov.gh"
-                                    className="font-medium text-primary underline underline-offset-4"
+                                    className="font-medium text-primary underline underline-offset-4 [overflow-wrap:anywhere]"
                                 >
                                     elections@youthparliament.gov.gh
                                 </a>

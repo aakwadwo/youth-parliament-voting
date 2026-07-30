@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button'
 import { BrandMark, TricolourRule } from '@/components/brand/BrandMark'
 import { Skeleton } from '@/components/ui/feedback'
 import { cn } from '@/lib/utils'
+import { ORGANISATION_SHORT_NAME } from '@/lib/election'
 
 const SECTIONS = [
     { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, Component: Dashboard },
@@ -129,7 +130,7 @@ function AdminPortal() {
                 <div className="flex items-center gap-2.5 border-b border-sidebar-border p-4">
                     <BrandMark height={32} priority />
                     <div className="min-w-0 leading-tight">
-                        <p className="truncate text-sm font-semibold">Youth Parliament</p>
+                        <p className="truncate text-sm font-semibold">{ORGANISATION_SHORT_NAME}</p>
                         <p className="text-xs text-muted-foreground">Admin portal</p>
                     </div>
                 </div>
@@ -149,7 +150,7 @@ function AdminPortal() {
                     <div className="flex min-w-0 items-center gap-2.5">
                         <BrandMark height={28} priority />
                         <div className="min-w-0 leading-tight">
-                            <p className="truncate text-sm font-semibold">Youth Parliament</p>
+                            <p className="truncate text-sm font-semibold">{ORGANISATION_SHORT_NAME}</p>
                             <p className="text-xs text-muted-foreground">
                                 {SECTIONS.find((s) => s.key === active).label}
                             </p>
@@ -189,7 +190,7 @@ function AdminPortal() {
                                 <BrandMark height={30} />
                                 <div className="min-w-0 leading-tight">
                                     <p className="truncate text-sm font-semibold">
-                                        Youth Parliament
+                                        {ORGANISATION_SHORT_NAME}
                                     </p>
                                     <p className="text-xs text-muted-foreground">Admin portal</p>
                                 </div>
