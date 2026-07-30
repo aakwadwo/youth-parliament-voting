@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase-admin'
 import { signVoterToken, setVoterCookie } from '@/lib/voter-session'
 import { isValidGhanaPhone, isValidDateString } from '@/lib/validation'
 import { rateLimit, RATE_LIMITS } from '@/lib/rate-limit'
-import { getClientIp, requireSameOrigin, noStore } from '@/lib/http'
+import { getClientIp, requireSameOrigin, noStore, rateLimitRefusal } from '@/lib/http'
 import { jsonError } from '@/lib/api-error'
 
 // One message for "no such phone number" and for "wrong date of birth". Two
@@ -19,7 +19,7 @@ export async function POST(request) {
     const ip = getClientIp(request)
     const ipLimit = await rateLimit('login-ip', ip, RATE_LIMITS.loginIp)
     if (!ipLimit.allowed) {
-        return noStore(jsonError('Too many attempts. Please try again later.', 429))
+        return rateLimitRefusal(ipLimit, 'Too many attempts. Please try again later.')
     }
 
     let body
@@ -47,8 +47,9 @@ export async function POST(request) {
     // attempts per number per day makes that take centuries.
     const phoneLimit = await rateLimit('login-phone', phone, RATE_LIMITS.loginPhone)
     if (!phoneLimit.allowed) {
-        return noStore(
-            jsonError('Too many sign-in attempts for this number. Please try again tomorrow.', 429)
+        return rateLimitRefusal(
+            phoneLimit,
+            'Too many sign-in attempts for this number. Please try again tomorrow.'
         )
     }
 

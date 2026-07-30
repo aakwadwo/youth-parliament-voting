@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase-admin'
 import { signVoterToken, setVoterCookie } from '@/lib/voter-session'
 import { isUUID, isValidGhanaPhone, isValidName, checkAgeEligibility } from '@/lib/validation'
 import { rateLimit, RATE_LIMITS } from '@/lib/rate-limit'
-import { getClientIp, requireSameOrigin, noStore } from '@/lib/http'
+import { getClientIp, requireSameOrigin, noStore, rateLimitRefusal } from '@/lib/http'
 import { jsonError, dbError, PG_UNIQUE_VIOLATION, PG_FOREIGN_KEY_VIOLATION } from '@/lib/api-error'
 
 const ALREADY_REGISTERED = 'This phone number is already registered. Please log in instead.'
@@ -16,7 +16,7 @@ export async function POST(request) {
     const ip = getClientIp(request)
     const ipLimit = await rateLimit('register-ip', ip, RATE_LIMITS.registerIp)
     if (!ipLimit.allowed) {
-        return noStore(jsonError('Too many attempts. Please try again later.', 429))
+        return rateLimitRefusal(ipLimit, 'Too many attempts. Please try again later.')
     }
 
     let body
@@ -60,7 +60,10 @@ export async function POST(request) {
     // subscribers behind very few addresses.
     const phoneLimit = await rateLimit('register-phone', phone, RATE_LIMITS.registerPhone)
     if (!phoneLimit.allowed) {
-        return noStore(jsonError('Too many attempts for this phone number. Try again later.', 429))
+        return rateLimitRefusal(
+            phoneLimit,
+            'Too many attempts for this phone number. Try again later.'
+        )
     }
 
     const supabase = createAdminClient()

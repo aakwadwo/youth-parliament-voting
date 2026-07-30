@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase-admin'
 import { getVoterIdFromRequest, clearVoterCookie } from '@/lib/voter-session'
 import { isUUID } from '@/lib/validation'
 import { rateLimit, RATE_LIMITS } from '@/lib/rate-limit'
-import { requireSameOrigin, noStore } from '@/lib/http'
+import { requireSameOrigin, noStore, rateLimitRefusal } from '@/lib/http'
 import { jsonError, dbError } from '@/lib/api-error'
 
 // Each failure reason from cast_vote() maps to one HTTP status and one
@@ -33,7 +33,7 @@ export async function POST(request) {
 
     const limit = await rateLimit('vote', voterId, RATE_LIMITS.vote)
     if (!limit.allowed) {
-        return noStore(jsonError('Too many attempts. Please try again shortly.', 429))
+        return rateLimitRefusal(limit, 'Too many attempts. Please try again shortly.')
     }
 
     let body

@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase-admin'
 import { getAdminFromRequest } from '@/lib/admin-session'
 import { logAdminAction, AUDIT_ACTIONS } from '@/lib/audit-log'
 import { rateLimit, RATE_LIMITS } from '@/lib/rate-limit'
-import { getClientIp, noStore } from '@/lib/http'
+import { getClientIp, noStore, rateLimitRefusal } from '@/lib/http'
 import { jsonError } from '@/lib/api-error'
 import { buildElectionReport, reportFilename } from '@/lib/election-report'
 import { buildWorkbookSheets, buildCsvRows } from '@/lib/export/report-sheets'
@@ -31,7 +31,7 @@ export async function GET(request) {
 
     const limit = await rateLimit('export', admin?.id ?? ip, RATE_LIMITS.export)
     if (!limit.allowed) {
-        return noStore(jsonError('Too many exports. Please wait a moment and try again.', 429))
+        return rateLimitRefusal(limit, 'Too many exports. Please wait a moment and try again.')
     }
 
     const format = (new URL(request.url).searchParams.get('format') ?? 'csv').toLowerCase()

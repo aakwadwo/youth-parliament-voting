@@ -89,3 +89,40 @@ export function noStore(response) {
 export function jsonNoStore(body, init) {
     return noStore(NextResponse.json(body, init))
 }
+
+/**
+ * Turns a refused rate-limit check into a response.
+ *
+ * A refusal has two causes that must not be reported the same way.
+ *
+ * Genuine throttling is the caller's doing: they really have made too many
+ * attempts, and 429 with "try again later" is exactly right.
+ *
+ * A missing Upstash configuration is the *operator's* doing. rateLimit() fails
+ * closed there on purpose — an election must not run with no brute-force
+ * protection on voter login — but the caller has made no attempts at all, so
+ * telling them they have made too many is simply false. It cost real diagnostic
+ * time: an administrator who could not sign in was told "Too many attempts",
+ * which reads as "your password is fine, wait a while", when the truth was that
+ * the deployment was missing two environment variables and the password was
+ * never checked. 503 says "this service is not working", which is what has
+ * actually happened, and Retry-After stops a client hammering a broken box.
+ *
+ * The request is refused either way. This changes only what the caller is told.
+ */
+export function rateLimitRefusal(limit, throttledMessage) {
+    if (limit.misconfigured) {
+        const response = jsonError(
+            'Sign-in is temporarily unavailable. Please contact the electoral secretariat.',
+            503
+        )
+        response.headers.set('Retry-After', String(limit.retryAfterSeconds ?? 30))
+        return noStore(response)
+    }
+
+    const response = jsonError(throttledMessage, 429)
+    if (limit.retryAfterSeconds) {
+        response.headers.set('Retry-After', String(limit.retryAfterSeconds))
+    }
+    return noStore(response)
+}

@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase-admin'
 import { signAdminToken, setAdminCookie } from '@/lib/admin-session'
 import { logAdminAction, AUDIT_ACTIONS } from '@/lib/audit-log'
 import { rateLimit, RATE_LIMITS } from '@/lib/rate-limit'
-import { getClientIp, requireSameOrigin, noStore } from '@/lib/http'
+import { getClientIp, requireSameOrigin, noStore, rateLimitRefusal } from '@/lib/http'
 import { jsonError } from '@/lib/api-error'
 
 // A bcrypt hash of 32 random bytes that were discarded — no plaintext matches
@@ -21,7 +21,7 @@ export async function POST(request) {
     const ip = getClientIp(request)
     const ipLimit = await rateLimit('admin-login-ip', ip, RATE_LIMITS.adminLoginIp)
     if (!ipLimit.allowed) {
-        return noStore(jsonError('Too many attempts. Please try again later.', 429))
+        return rateLimitRefusal(ipLimit, 'Too many attempts. Please try again later.')
     }
 
     let body
@@ -47,8 +47,9 @@ export async function POST(request) {
         RATE_LIMITS.adminLoginAccount
     )
     if (!accountLimit.allowed) {
-        return noStore(
-            jsonError('This account is temporarily locked. Please try again later.', 429)
+        return rateLimitRefusal(
+            accountLimit,
+            'This account is temporarily locked. Please try again later.'
         )
     }
 

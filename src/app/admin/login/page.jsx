@@ -91,7 +91,6 @@ function AdminLoginForm() {
                                         autoCapitalize="none"
                                         spellCheck={false}
                                         enterKeyHint="next"
-                                        placeholder="admin@youthparliament.gh"
                                         value={form.email}
                                         onChange={(e) => {
                                             setForm((p) => ({ ...p, email: e.target.value }))
