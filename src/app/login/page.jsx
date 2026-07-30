@@ -12,10 +12,11 @@ import { Alert, LiveRegion } from '@/components/ui/alert'
 import { Spinner } from '@/components/ui/feedback'
 import { PageShell, PageHeading } from '@/components/layout/PageShell'
 import { storeVoter, clearVoter } from '@/lib/voter-client'
-import { isValidGhanaPhone, isValidDateString, normalisePhone } from '@/lib/validation'
+import { isValidGhanaPhone, isValidDateString, normalisePhone, dobBounds } from '@/lib/validation'
 
 export default function LoginPage() {
     const router = useRouter()
+    const bounds = dobBounds()
     const [form, setForm] = useState({ voter_phone: '', voter_dob: '' })
     const [errors, setErrors] = useState({})
     const [submitError, setSubmitError] = useState('')
@@ -129,6 +130,7 @@ export default function LoginPage() {
                         <Field
                             id="voter_dob"
                             label="Date of birth"
+                            hint="Day / month / year — for example 14/03/2004."
                             required
                             error={errors.voter_dob}
                         >
@@ -137,6 +139,11 @@ export default function LoginPage() {
                                 name="voter_dob"
                                 autoComplete="bday"
                                 enterKeyHint="go"
+                                // Same eligibility bounds the registration form
+                                // applies, so the picker cannot offer a date
+                                // that could never have registered.
+                                min={bounds.min}
+                                max={bounds.max}
                                 value={form.voter_dob}
                                 onChange={(e) => update('voter_dob', e.target.value)}
                             />

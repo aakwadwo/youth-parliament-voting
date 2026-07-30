@@ -229,6 +229,11 @@ export default function RegisterPage() {
                         <Field
                             id="voter_dob"
                             label="Date of birth"
+                            // The native control shows its own format hint, but
+                            // only once it has focus on some phones, so the
+                            // order is stated in the open. Ghana writes dates
+                            // day-first.
+                            hint="Day / month / year — for example 14/03/2004."
                             required
                             error={touched.voter_dob ? errors.voter_dob : null}
                         >

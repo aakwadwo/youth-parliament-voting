@@ -64,7 +64,7 @@ function AdminLoginForm() {
 
             <main
                 id="main"
-                className="flex flex-1 items-center justify-center px-4 py-10 sm:px-6"
+                className="flex flex-1 items-center justify-center px-5 py-10 sm:px-6"
             >
                 <div className="w-full max-w-sm space-y-6">
                     <div className="flex flex-col items-center gap-4 text-center">

@@ -59,8 +59,8 @@ export default function TermsPage() {
                 <h2>Availability</h2>
                 <p>
                     Voting is only possible while the poll is open. The opening and closing times
-                    are shown on every page of this service and are set by the electoral
-                    secretariat. We aim to keep the service available throughout, but we do not
+                    are shown on every page of this service and are set by the Electoral
+                    Commission. We aim to keep the service available throughout, but we do not
                     guarantee uninterrupted access, and we may suspend it briefly for urgent
                     maintenance.
                 </p>
@@ -68,7 +68,7 @@ export default function TermsPage() {
                 <h2>Accuracy of results</h2>
                 <p>
                     Results shown before the poll closes are provisional. The declared result is
-                    the one published by the electoral secretariat after voting has closed.
+                    the one published by the Electoral Commission after voting has closed.
                 </p>
 
                 <h2>Changes to these terms</h2>

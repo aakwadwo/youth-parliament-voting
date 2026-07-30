@@ -35,7 +35,7 @@ export default function Home() {
             <SiteHeader />
 
             <main id="main" className="flex-1">
-                <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6 sm:py-14">
+                <div className="mx-auto w-full max-w-3xl px-5 py-10 sm:px-6 sm:py-14">
                     {/* Balanced wrapping put the line break inside the
                         institution's name ("Vote in the National / Youth
                         Parliament election"). Naming the election on its own
@@ -81,7 +81,7 @@ export default function Home() {
                         <section>
                             <h2 className="text-heading font-semibold">If you need help</h2>
                             <p className="mt-2 leading-relaxed text-muted-foreground">
-                                Contact the electoral secretariat on{' '}
+                                Contact the Electoral Commission on{' '}
                                 <a
                                     href="tel:+233302123456"
                                     className="font-medium text-primary underline underline-offset-4"

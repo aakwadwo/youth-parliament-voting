@@ -67,7 +67,7 @@ export default function PrivacyPage() {
 
                 <h2>Who can see it</h2>
                 <p>
-                    Only the electoral secretariat, and only the register: names, numbers,
+                    Only the Electoral Commission, and only the register: names, numbers,
                     constituencies and whether each person has voted. Administrator access to the
                     register is logged. We do not sell your data, and we do not share it with
                     political parties, campaigns or advertisers.

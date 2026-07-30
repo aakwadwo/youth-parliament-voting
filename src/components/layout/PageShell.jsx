@@ -1,8 +1,14 @@
 import Link from 'next/link'
+import Image from 'next/image'
 
 import { cn } from '@/lib/utils'
 import { BrandMark, TricolourRule } from '@/components/brand/BrandMark'
-import { ORGANISATION_NAME, ORGANISATION_SHORT_NAME } from '@/lib/election'
+import {
+    ELECTORAL_COMMISSION,
+    ORGANISATION_NAME,
+    ORGANISATION_SHORT_NAME,
+    TECHNOLOGY_PROVIDER,
+} from '@/lib/election'
 
 const FOOTER_LINKS = [
     { href: '/privacy', label: 'Privacy' },
@@ -14,7 +20,12 @@ const FOOTER_LINKS = [
 export function SiteHeader({ className }) {
     return (
         <header className={cn('border-b border-border bg-background', className)}>
-            <div className="mx-auto flex h-16 w-full max-w-3xl items-center px-4 sm:px-6">
+            {/* 20px rather than 16px at the base width. On a 320px phone the
+                old value left content 16px from the glass on both sides, which
+                is close enough to the edge to read as "the page ran out of
+                room" rather than as a margin — and it put text directly under
+                the curved corners of most modern handsets. */}
+            <div className="mx-auto flex h-16 w-full max-w-3xl items-center px-5 sm:px-6">
                 <Link
                     href="/"
                     className="-my-2 flex items-center gap-2.5 rounded-md py-2 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
@@ -53,7 +64,7 @@ export function PageShell({ children, width = 'md', className }) {
             <main
                 id="main"
                 className={cn(
-                    'mx-auto w-full flex-1 px-4 py-8 sm:px-6 sm:py-12',
+                    'mx-auto w-full flex-1 px-5 py-8 sm:px-6 sm:py-12',
                     maxWidth,
                     className
                 )}
@@ -69,7 +80,7 @@ export function PageShell({ children, width = 'md', className }) {
 export function SiteFooter({ className }) {
     return (
         <footer className={cn('mt-auto border-t border-border bg-surface', className)}>
-            <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-6">
+            <div className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-6">
                 {/* Standalone navigation links, so they get a real tap target.
                     The vertical padding is cancelled by a negative margin, so
                     the hit area grows to 40px without the row growing with it.
@@ -90,9 +101,36 @@ export function SiteFooter({ className }) {
                 <p className="mt-5 text-sm leading-relaxed text-muted-foreground">
                     {ORGANISATION_NAME}
                     <br />
-                    &copy; {new Date().getFullYear()}. Built and operated by the electoral
-                    secretariat.
+                    &copy; {new Date().getFullYear()}. Operated by the {ELECTORAL_COMMISSION}.
                 </p>
+
+                {/* Technology attribution.
+                    Deliberately the quietest thing on the page and separated by
+                    a rule: the Commission owns this service, and a supplier's
+                    mark sitting level with the institution's own copy would
+                    read as co-branding on a ballot platform. Small caption,
+                    muted label, mark at text height — the pattern government
+                    services use to credit an implementation partner. */}
+                <div className="mt-6 border-t border-border pt-5">
+                    {/* Not a link: no public URL for the supplier was supplied,
+                        and a guessed one on a government ballot platform is
+                        worse than none. */}
+                    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                        <span>Platform developed by</span>
+                        <Image
+                            src="/brand/kas-maven-consult.png"
+                            alt={TECHNOLOGY_PROVIDER}
+                            width={143}
+                            height={66}
+                            // Height-constrained to the cap height of the text
+                            // beside it. The source was a 1254px square that was
+                            // ~65% white margin; it is cropped to the wordmark
+                            // and keyed to transparency, so there is no white
+                            // plate sitting on the surface colour.
+                            className="h-[1.15rem] w-auto dark:brightness-125"
+                        />
+                    </p>
+                </div>
             </div>
         </footer>
     )

@@ -328,7 +328,7 @@ export default function BallotPage() {
                         content behind it is a ballot, and showing it smeared
                         through a frosted panel is decoration on the one screen
                         that should be unambiguous. */}
-                    <div className="sticky bottom-0 mt-8 -mx-4 border-t border-border bg-background px-4 py-4 sm:-mx-6 sm:px-6">
+                    <div className="sticky bottom-0 mt-8 -mx-5 border-t border-border bg-background px-5 py-4 sm:-mx-6 sm:px-6">
                         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-sm text-muted-foreground" aria-live="polite">
                                 {selected

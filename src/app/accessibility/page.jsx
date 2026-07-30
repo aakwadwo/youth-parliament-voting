@@ -75,8 +75,8 @@ export default function AccessibilityPage() {
                 <h2>If you cannot use this service</h2>
                 <p>
                     You have a right to vote regardless of whether you can use this website. If
-                    you cannot register or vote online for any reason, contact the electoral
-                    secretariat and we will make alternative arrangements.
+                    you cannot register or vote online for any reason, contact the Electoral
+                    Commission and we will make alternative arrangements.
                 </p>
 
                 <h2>Reporting a problem</h2>

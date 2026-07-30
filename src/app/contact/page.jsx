@@ -4,7 +4,7 @@ import { Prose } from '@/components/layout/Prose'
 export const metadata = {
     title: 'Contact',
     description:
-        'How to reach the National Youth Parliament electoral secretariat about registration, voting or results.',
+        'How to reach the National Youth Parliament Electoral Commission about registration, voting or results.',
 }
 
 export default function ContactPage() {
@@ -12,7 +12,7 @@ export default function ContactPage() {
         <PageShell width="lg">
             <PageHeading
                 title="Contact"
-                description="How to reach the electoral secretariat."
+                description="How to reach the Electoral Commission."
             />
 
             <Prose className="mt-8">
@@ -68,7 +68,7 @@ export default function ContactPage() {
 
                 <h2>By post</h2>
                 <p>
-                    Electoral Secretariat
+                    National Youth Parliament Electoral Commission
                     <br />
                     National Youth Parliament of Ghana
                     <br />

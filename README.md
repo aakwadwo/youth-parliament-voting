@@ -62,6 +62,8 @@ tests/                          node:test suite (no test framework dependency)
 
 **Every eligibility rule lives in `cast_vote()`.** The vote route makes one RPC call. Re-reading the voter, the election window and the candidate inside the writing transaction removes both two round trips of latency on the hottest path and a real time-of-check/time-of-use gap.
 
+**Rate limiting runs on Postgres, not Redis.** `check_rate_limit()` (migration `0013`) reimplements Upstash's approximated sliding window inside the database, so the tuned limits keep their exact meaning. Dropping Upstash removed the only non-Supabase dependency *and* a security hole: the Redis limiter failed **open**, so anyone able to disrupt it switched off every brute-force protection at once. Postgres is already required by all of these routes — without it there is no voter to authenticate against — so nothing is left to attack when it is down. One row per identifier per window, not per request.
+
 **Validation is shared, not duplicated.** `src/lib/validation.js` is imported by the forms and by the API routes. Client-side checks are a courtesy; the server enforces every one of them again.
 
 **The XLSX writer has no dependencies.** An `.xlsx` file is a ZIP of XML, and Node ships DEFLATE and CRC-32. The leading spreadsheet library pulls roughly sixty transitive packages — several unmaintained, one with a live advisory — into a system that decides an election. `src/lib/export/zip.js` and `xlsx.js` replace all of it in about 250 lines.
@@ -78,7 +80,6 @@ Copy `.env.local` (not committed) and fill in:
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Used by every server-side query. Never expose to the client. |
 | `ADMIN_JWT_SECRET` | Yes | Signs the admin session cookie (`admin_token`). |
 | `VOTER_JWT_SECRET` | Yes | Signs the voter session cookie (`voter_token`). |
-| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | **Yes in production** | Backs rate limiting. Without them, production requests are **refused** rather than run unprotected. |
 | `NEXT_PUBLIC_SITE_URL` | Recommended | Canonical origin, for absolute metadata URLs. |
 | `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Optional | Server and client error reporting. Set both to the same DSN. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | No | Unused by app code. Kept only so Supabase RLS has something to deny. |
@@ -119,6 +120,7 @@ Expected schema (defined in Supabase, outside this repo):
 - `election_settings` (single row: `id`, `election_name`, `is_active`, `voting_opens_at`, `voting_closes_at`)
 - `admins` (`id`, `email`, `password_hash`, `role`) — bcrypt hashes, created manually
 - `admin_audit_log` (from `0005`, extended by `0010`)
+- `rate_limit_counters` (from `0013`) — sliding-window counters; safe to truncate, which resets all limits
 
 Create an administrator:
 
@@ -140,7 +142,7 @@ Implemented in this codebase:
 | Ballot secrecy | No voter reference on `votes`, enforced by schema |
 | Authentication | httpOnly, `Secure`, `SameSite` session cookies; admin cookie is `SameSite=Strict` |
 | Authorization | `proxy.js` gates `/admin` and `/api/admin/*` before any handler runs |
-| Brute force | Two-dimensional rate limits — generous per IP (Ghanaian carrier NAT), tight per phone number / per admin account |
+| Brute force | Two-dimensional rate limits — generous per IP (Ghanaian carrier NAT), tight per phone number / per admin account. Counters live in Postgres (`0013`) and fail **closed**. |
 | Enumeration | Identical responses and constant-time bcrypt comparison for unknown vs. wrong credentials |
 | CSRF | `SameSite` cookies plus an explicit `Origin` check on every mutation |
 | XSS | Nonce-based CSP with `strict-dynamic` in production; React escaping throughout |
@@ -159,9 +161,8 @@ Implemented in this codebase:
 1. Run every migration in `migrations/` against the production project, oldest first.
 2. Set every environment variable above in the hosting platform, not just `.env.local`.
 3. Confirm Supabase Row Level Security **denies** the `anon` and `authenticated` roles on every table. The app never relies on RLS (it uses the service-role key), but RLS is what stops someone calling the Supabase REST API directly with the public anon key.
-4. Provision Upstash Redis. Without it, production requests are refused.
-5. Create the `candidate-photos` Storage bucket, public-read.
-6. Verify after deploy:
+4. Create the `candidate-photos` Storage bucket, public-read.
+5. Verify after deploy:
    - `curl -I https://your-domain/` shows `content-security-policy` with a `nonce-`, plus HSTS
    - `/admin` redirects to `/admin/login`
    - `/api/admin/stats` returns 401 unauthenticated

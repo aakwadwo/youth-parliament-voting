@@ -146,7 +146,7 @@ function AdminPortal() {
                 Everything is now reachable at every width. */}
             <header className="sticky top-0 z-30 border-b border-border bg-background lg:hidden">
                 <TricolourRule />
-                <div className="flex h-14 items-center justify-between gap-3 px-4">
+                <div className="flex h-14 items-center justify-between gap-3 px-5">
                     <div className="flex min-w-0 items-center gap-2.5">
                         <BrandMark height={28} priority />
                         <div className="min-w-0 leading-tight">
@@ -210,7 +210,7 @@ function AdminPortal() {
                 </div>
             ) : null}
 
-            <main id="main" className="px-4 py-6 sm:px-6 sm:py-8 lg:ml-60 lg:px-8">
+            <main id="main" className="px-5 py-6 sm:px-6 sm:py-8 lg:ml-60 lg:px-8">
                 <div className="mx-auto w-full max-w-6xl">
                     <ActiveSection />
                 </div>
