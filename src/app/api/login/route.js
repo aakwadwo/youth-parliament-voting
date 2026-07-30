@@ -1,43 +1,55 @@
+import { NextResponse } from 'next/server'
+
 import { createAdminClient } from '@/lib/supabase-admin'
 import { signVoterToken, setVoterCookie } from '@/lib/voter-session'
 import { isValidGhanaPhone, isValidDateString } from '@/lib/validation'
-import { rateLimit, getClientIp, RATE_LIMITS } from '@/lib/rate-limit'
+import { rateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import { getClientIp, requireSameOrigin, noStore } from '@/lib/http'
 import { jsonError } from '@/lib/api-error'
-import { NextResponse } from 'next/server'
+
+// One message for "no such phone number" and for "wrong date of birth". Two
+// distinct messages would turn this endpoint into an oracle for checking
+// whether a given Ghanaian mobile number is registered to vote.
+const NOT_FOUND = 'We could not find a registration with those details. Please check and try again.'
 
 export async function POST(request) {
+    const crossOrigin = requireSameOrigin(request)
+    if (crossOrigin) return crossOrigin
+
     const ip = getClientIp(request)
-    // Date-of-birth has limited entropy, so login is rate limited aggressively
-    // to make brute-forcing a phone+DOB combination impractical.
-    const ipLimit = await rateLimit('login', ip, RATE_LIMITS.login)
+    const ipLimit = await rateLimit('login-ip', ip, RATE_LIMITS.loginIp)
     if (!ipLimit.allowed) {
-        return jsonError('Too many attempts. Please try again later.', 429)
+        return noStore(jsonError('Too many attempts. Please try again later.', 429))
     }
 
     let body
     try {
         body = await request.json()
     } catch {
-        return jsonError('Invalid request body', 400)
+        return noStore(jsonError('Invalid request body', 400))
     }
 
     const { voter_phone, voter_dob } = body ?? {}
 
     if (!voter_phone || !voter_dob) {
-        return jsonError('Phone number and date of birth are required', 400)
+        return noStore(jsonError('Phone number and date of birth are required.', 400))
     }
 
-    const phone = voter_phone.trim()
+    const phone = typeof voter_phone === 'string' ? voter_phone.replace(/[\s-]/g, '') : ''
 
     if (!isValidGhanaPhone(phone) || !isValidDateString(voter_dob)) {
-        return jsonError('No voter found with these details. Please register first.', 404)
+        return noStore(jsonError(NOT_FOUND, 404))
     }
 
-    // Second key dimension beyond the IP limit above: protects a specific phone
-    // number from DOB brute-forcing even if the attacker rotates IPs.
-    const phoneLimit = await rateLimit('login-phone', phone, RATE_LIMITS.login)
+    // The limit that actually matters. A date of birth inside the 18-35
+    // eligibility window is roughly 6,600 possibilities, so without a per-phone
+    // cap an attacker who knows someone's number could enumerate it. Eight
+    // attempts per number per day makes that take centuries.
+    const phoneLimit = await rateLimit('login-phone', phone, RATE_LIMITS.loginPhone)
     if (!phoneLimit.allowed) {
-        return jsonError('Too many attempts. Please try again later.', 429)
+        return noStore(
+            jsonError('Too many sign-in attempts for this number. Please try again tomorrow.', 429)
+        )
     }
 
     const supabase = createAdminClient()
@@ -47,27 +59,27 @@ export async function POST(request) {
         .select('id, full_name, constituency_id, has_voted, constituencies(name)')
         .eq('voter_phone', phone)
         .eq('voter_dob', voter_dob)
-        .single()
+        .maybeSingle()
 
     if (error || !voter) {
-        return jsonError('No voter found with these details. Please register first.', 404)
+        return noStore(jsonError(NOT_FOUND, 404))
     }
 
     const voterPayload = {
         id: voter.id,
         full_name: voter.full_name,
         constituency_id: voter.constituency_id,
-        constituency_name: voter.constituencies?.name,
+        constituency_name: voter.constituencies?.name ?? null,
     }
 
     if (voter.has_voted) {
-        // We deliberately cannot say *who* they voted for — votes carry no
-        // reference back to the voter that cast them.
-        return NextResponse.json({ voter: voterPayload, already_voted: true })
+        // We can confirm that they voted, but deliberately cannot say who for:
+        // ballots carry no reference back to the voter who cast them.
+        return noStore(NextResponse.json({ voter: voterPayload, already_voted: true }))
     }
 
     const token = await signVoterToken(voter.id)
-    const response = NextResponse.json({ voter: voterPayload, already_voted: false })
+    const response = noStore(NextResponse.json({ voter: voterPayload, already_voted: false }))
     setVoterCookie(response, token)
     return response
 }

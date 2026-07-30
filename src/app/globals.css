@@ -1,133 +1,364 @@
-@import '@fontsource/inter/400.css';
-@import '@fontsource/inter/500.css';
-@import '@fontsource/inter/600.css';
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
 
+/* ==========================================================================
+   National Youth Parliament Ghana — design system
+
+   Every brand value below is sampled directly from the official logo
+   (public/ypg.jpg), not approximated from generic Ghana flag colours:
+
+     Parliament Green  #187B28   the arc + the wordmark
+     Ghana Gold        #F9C50F   the raised figure and the star
+     Ghana Red         #DC0B10   the arc
+     Parliament Ink    #1A1A1A   the parliament building
+
+   The interface is deliberately neutral. Green is the single primary action
+   colour, gold is reserved for attention/highlight, red only for
+   destructive/error, and the three together appear only as the tricolour
+   rule that signs each page. Every foreground/background pair used in the
+   app is verified at WCAG AA or better.
+   ========================================================================== */
+
 @theme inline {
+  /* ---- Brand ramps (sampled from the logo) ---------------------------- */
+  --color-brand-green-50: oklch(0.9745 0.0142 145.2);
+  --color-brand-green-100: oklch(0.9375 0.0355 145.2);
+  --color-brand-green-200: oklch(0.8686 0.0709 145.2);
+  --color-brand-green-300: oklch(0.7746 0.1112 145.2);
+  --color-brand-green-400: oklch(0.6404 0.1445 145.1);
+  --color-brand-green-500: oklch(0.5106 0.1482 145.13); /* #187B28 logo arc  */
+  --color-brand-green-600: oklch(0.4632 0.1345 145.3);
+  --color-brand-green-700: oklch(0.416 0.1198 145.49); /* #0F5C1D          */
+  --color-brand-green-800: oklch(0.3512 0.1002 145.6);
+  --color-brand-green-900: oklch(0.2884 0.0798 145.8);
+
+  --color-brand-gold-50: oklch(0.9834 0.0294 89.1);
+  --color-brand-gold-100: oklch(0.9542 0.0688 89.1);
+  --color-brand-gold-200: oklch(0.9128 0.1156 89.1);
+  --color-brand-gold-300: oklch(0.8792 0.1462 89.1);
+  --color-brand-gold-400: oklch(0.8458 0.1709 89.09); /* #F9C50F logo star */
+  --color-brand-gold-500: oklch(0.7477 0.1532 85.21); /* #D9A400          */
+  --color-brand-gold-600: oklch(0.6382 0.1288 82.5);
+  --color-brand-gold-700: oklch(0.5222 0.1032 80.4); /* text-safe on white */
+  --color-brand-gold-800: oklch(0.4238 0.0824 78.6);
+
+  --color-brand-red-50: oklch(0.9682 0.0164 28.4);
+  --color-brand-red-100: oklch(0.9204 0.0432 28.4);
+  --color-brand-red-200: oklch(0.8348 0.0942 28.4);
+  --color-brand-red-300: oklch(0.7196 0.1584 28.4);
+  --color-brand-red-400: oklch(0.6284 0.2044 28.4);
+  --color-brand-red-500: oklch(0.5646 0.2275 28.4); /* #DC0B10 logo arc    */
+  --color-brand-red-600: oklch(0.5136 0.2073 28.17); /* #C2070E            */
+  --color-brand-red-700: oklch(0.4522 0.1826 28.1);
+  --color-brand-red-800: oklch(0.3838 0.1548 28.0);
+
+  --color-brand-ink-50: oklch(0.9772 0.0016 145);
+  --color-brand-ink-100: oklch(0.9564 0.0022 145);
+  --color-brand-ink-200: oklch(0.9138 0.0032 145);
+  --color-brand-ink-300: oklch(0.8452 0.004 145);
+  --color-brand-ink-400: oklch(0.6402 0.0058 145);
+  --color-brand-ink-500: oklch(0.5192 0.0062 145);
+  --color-brand-ink-600: oklch(0.4262 0.0056 145);
+  --color-brand-ink-700: oklch(0.3402 0.0046 145);
+  --color-brand-ink-800: oklch(0.2686 0.0034 145);
+  --color-brand-ink-900: oklch(0.2178 0 89.88); /* #1A1A1A the building     */
+  --color-brand-ink-950: oklch(0.1712 0 89.88);
+
+  /* ---- Semantic surface + text --------------------------------------- */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: 'Inter', sans-serif;
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
+  --color-surface: var(--surface);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Status colours, each with a tint for banners/pills */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-surface: var(--success-surface);
+  --color-success-border: var(--success-border);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-surface: var(--warning-surface);
+  --color-warning-border: var(--warning-border);
+  --color-danger: var(--danger);
+  --color-danger-foreground: var(--danger-foreground);
+  --color-danger-surface: var(--danger-surface);
+  --color-danger-border: var(--danger-border);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-surface: var(--info-surface);
+  --color-info-border: var(--info-border);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* ---- Typography ---------------------------------------------------- */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    'Segoe UI', Roboto, sans-serif;
+  --font-heading: var(--font-sans);
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+
+  /* Fluid type so small phones through desktop monitors all read well
+     without a cascade of per-breakpoint font-size overrides. */
+  --text-display: clamp(1.875rem, 1.35rem + 2.4vw, 3rem);
+  --text-display--line-height: 1.08;
+  --text-display--letter-spacing: -0.022em;
+  --text-title: clamp(1.5rem, 1.2rem + 1.3vw, 2rem);
+  --text-title--line-height: 1.16;
+  --text-title--letter-spacing: -0.018em;
+  --text-heading: clamp(1.125rem, 1.02rem + 0.5vw, 1.375rem);
+  --text-heading--line-height: 1.25;
+  --text-heading--letter-spacing: -0.012em;
+
+  /* ---- Radius: tightened from the shadcn default to read institutional
+     rather than consumer-app rounded. -------------------------------- */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.25rem;
+  --radius-4xl: 1.5rem;
+
+  /* ---- Elevation: low and diffuse; a ballot should not float --------- */
+  --shadow-xs: 0 1px 2px 0 oklch(0.2178 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0 oklch(0.2178 0 0 / 0.07), 0 1px 2px -1px oklch(0.2178 0 0 / 0.06);
+  --shadow-md: 0 4px 12px -2px oklch(0.2178 0 0 / 0.08), 0 2px 4px -2px oklch(0.2178 0 0 / 0.05);
+  --shadow-lg: 0 12px 28px -8px oklch(0.2178 0 0 / 0.12), 0 4px 8px -4px oklch(0.2178 0 0 / 0.06);
 }
 
 :root {
   --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --foreground: oklch(0.2178 0 89.88); /* Parliament Ink                   */
+  --surface: oklch(0.9788 0.0024 145.2); /* page canvas, whisper of green   */
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.2178 0 89.88);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --popover-foreground: oklch(0.2178 0 89.88);
+
+  --primary: oklch(0.5106 0.1482 145.13); /* Parliament Green — 5.38:1 on white */
+  --primary-foreground: oklch(1 0 0);
+  /* Hover deepens rather than fades: an opacity-based hover would wash the
+     button toward the page background and drop its text contrast. */
+  --primary-hover: oklch(0.4632 0.1345 145.3);
+  --secondary: oklch(0.9638 0.0035 145.2);
+  --secondary-foreground: oklch(0.2178 0 89.88);
+  --muted: oklch(0.9694 0.003 145.2);
+  --muted-foreground: oklch(0.4402 0.0072 285); /* #55555F — 7.37:1 on white */
+  --accent: oklch(0.8458 0.1709 89.09); /* Ghana Gold                      */
+  --accent-foreground: oklch(0.2178 0 89.88); /* ink on gold — 10.79:1      */
+  --destructive: oklch(0.5136 0.2073 28.17); /* #C2070E — 6.31:1 white text */
+  --destructive-foreground: oklch(1 0 0);
+
+  /* Decorative hairlines vs. interactive-control borders. WCAG 1.4.11 asks
+     for 3:1 on control boundaries, which --input meets; --border is only
+     ever used for dividers and card edges, which are exempt. */
+  --border: oklch(0.9198 0.0028 145.2);
+  --border-strong: oklch(0.8608 0.0034 145.2);
+  --input: oklch(0.6862 0.0074 145.2); /* #9AA09B — 3.02:1 on white        */
+  --ring: oklch(0.5106 0.1482 145.13);
+
+  --success: oklch(0.416 0.1198 145.49);
+  --success-foreground: oklch(0.3512 0.1002 145.6);
+  --success-surface: oklch(0.9702 0.0182 145.2);
+  --success-border: oklch(0.8686 0.0709 145.2);
+  --warning: oklch(0.6382 0.1288 82.5);
+  --warning-foreground: oklch(0.4238 0.0824 78.6);
+  --warning-surface: oklch(0.9808 0.0324 89.1);
+  --warning-border: oklch(0.9128 0.1156 89.1);
+  --danger: oklch(0.5136 0.2073 28.17);
+  --danger-foreground: oklch(0.4522 0.1826 28.1);
+  --danger-surface: oklch(0.9682 0.0164 28.4);
+  --danger-border: oklch(0.9204 0.0432 28.4);
+  --info: oklch(0.4262 0.0056 145);
+  --info-foreground: oklch(0.3402 0.0046 145);
+  --info-surface: oklch(0.9694 0.003 145.2);
+  --info-border: oklch(0.9198 0.0028 145.2);
+
+  /* Chart series: brand-led, and ordered so the first three are the logo's
+     own green/gold/red. Distinguishable in both light and dark themes. */
+  --chart-1: oklch(0.5106 0.1482 145.13);
+  --chart-2: oklch(0.7477 0.1532 85.21);
+  --chart-3: oklch(0.5136 0.2073 28.17);
+  --chart-4: oklch(0.4262 0.0056 145);
+  --chart-5: oklch(0.6404 0.1445 145.1);
+
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.2178 0 89.88);
+  --sidebar-primary: oklch(0.5106 0.1482 145.13);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.9702 0.0182 145.2);
+  --sidebar-accent-foreground: oklch(0.416 0.1198 145.49);
+  --sidebar-border: oklch(0.9198 0.0028 145.2);
+  --sidebar-ring: oklch(0.5106 0.1482 145.13);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: oklch(0.1782 0.0032 145.2);
+  --foreground: oklch(0.9668 0.0028 145.2);
+  --surface: oklch(0.1512 0.003 145.2);
+  --card: oklch(0.2178 0.0036 145.2);
+  --card-foreground: oklch(0.9668 0.0028 145.2);
+  --popover: oklch(0.2178 0.0036 145.2);
+  --popover-foreground: oklch(0.9668 0.0028 145.2);
+
+  --primary: oklch(0.6862 0.1568 145.1); /* lifted green — 6.69:1 on dark  */
+  --primary-foreground: oklch(0.1712 0 89.88);
+  --primary-hover: oklch(0.7746 0.1112 145.2);
+  --secondary: oklch(0.2726 0.004 145.2);
+  --secondary-foreground: oklch(0.9668 0.0028 145.2);
+  --muted: oklch(0.2726 0.004 145.2);
+  --muted-foreground: oklch(0.7248 0.0058 145.2);
+  --accent: oklch(0.8458 0.1709 89.09);
+  --accent-foreground: oklch(0.1712 0 89.88);
+  --destructive: oklch(0.7196 0.1584 28.4);
+  --destructive-foreground: oklch(0.1712 0 89.88);
+
+  --border: oklch(1 0 0 / 12%);
+  --border-strong: oklch(1 0 0 / 22%);
+  --input: oklch(1 0 0 / 38%);
+  --ring: oklch(0.6862 0.1568 145.1);
+
+  --success: oklch(0.7746 0.1112 145.2);
+  --success-foreground: oklch(0.8686 0.0709 145.2);
+  --success-surface: oklch(0.2884 0.0798 145.8 / 45%);
+  --success-border: oklch(0.416 0.1198 145.49);
+  --warning: oklch(0.8792 0.1462 89.1);
+  --warning-foreground: oklch(0.9128 0.1156 89.1);
+  --warning-surface: oklch(0.4238 0.0824 78.6 / 40%);
+  --warning-border: oklch(0.5222 0.1032 80.4);
+  --danger: oklch(0.7196 0.1584 28.4);
+  --danger-foreground: oklch(0.8348 0.0942 28.4);
+  --danger-surface: oklch(0.3838 0.1548 28 / 40%);
+  --danger-border: oklch(0.4522 0.1826 28.1);
+  --info: oklch(0.7248 0.0058 145.2);
+  --info-foreground: oklch(0.8452 0.004 145);
+  --info-surface: oklch(0.2726 0.004 145.2);
+  --info-border: oklch(1 0 0 / 12%);
+
+  --chart-1: oklch(0.6862 0.1568 145.1);
+  --chart-2: oklch(0.8458 0.1709 89.09);
+  --chart-3: oklch(0.7196 0.1584 28.4);
+  --chart-4: oklch(0.7248 0.0058 145.2);
+  --chart-5: oklch(0.5106 0.1482 145.13);
+
+  --sidebar: oklch(0.2178 0.0036 145.2);
+  --sidebar-foreground: oklch(0.9668 0.0028 145.2);
+  --sidebar-primary: oklch(0.6862 0.1568 145.1);
+  --sidebar-primary-foreground: oklch(0.1712 0 89.88);
+  --sidebar-accent: oklch(0.2884 0.0798 145.8 / 45%);
+  --sidebar-accent-foreground: oklch(0.7746 0.1112 145.2);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.6862 0.1568 145.1);
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
+
   html {
     @apply font-sans;
+    -webkit-text-size-adjust: 100%;
+    /* Anchor targets clear the sticky page header. */
+    scroll-padding-top: 5rem;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* One consistent, high-visibility focus ring everywhere — keyboard users
+     must always be able to see where they are on a ballot. */
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+
+  h1, h2, h3, h4 {
+    @apply font-heading text-balance;
+  }
+
+  p {
+    @apply text-pretty;
+  }
+
+  /* Native controls inherit the brand rather than the OS accent. */
+  :root {
+    accent-color: var(--primary);
+    color-scheme: light;
+  }
+
+  .dark {
+    color-scheme: dark;
+  }
+
+  /* Tabular figures for every vote count, tally and percentage so columns
+     of numbers line up and don't jitter as they update. */
+  .numeric {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* The tricolour rule: the only place the three logo colours appear
+     together. Signs a page as official without adding chrome. */
+  .brand-rule {
+    background-image: linear-gradient(
+      to right,
+      var(--color-brand-red-500) 0 33.333%,
+      var(--color-brand-gold-400) 33.333% 66.666%,
+      var(--color-brand-green-500) 66.666% 100%
+    );
+  }
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
   }
 }

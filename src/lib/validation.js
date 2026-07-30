@@ -1,41 +1,126 @@
+/**
+ * Validation shared by the browser and the API routes.
+ *
+ * Both sides import from here so a voter can never be accepted by the form and
+ * then rejected by the server with a differently worded message. The two used
+ * to disagree: the form computed age from a 365.25-day approximation while the
+ * server used a calendar year, so people born on certain days were told they
+ * were eligible and then told they were not.
+ *
+ * Client-side validation is purely a courtesy to the voter. Every rule here is
+ * enforced again server-side, where it cannot be bypassed.
+ */
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const GHANA_PHONE_RE = /^0[0-9]{9}$/
-const NAME_RE = /^[a-zA-ZÀ-ſ' -]{2,100}$/
+
+// Ghanaian mobile numbers in national format: 0, then a mobile prefix digit,
+// then eight more digits.
+const GHANA_PHONE_RE = /^0[235][0-9]{8}$/
+
+// Latin letters with the accents used across Ghanaian and other West African
+// names, plus the apostrophes, hyphens and periods that legitimately appear in
+// them. Deliberately excludes digits and every character that carries meaning
+// in HTML, SQL or a spreadsheet formula.
+const NAME_RE = /^[\p{L}][\p{L}\p{M}'’.\- ]{1,99}$/u
+
+export const MIN_AGE = 18
+export const MAX_AGE = 35
 
 export function isUUID(value) {
     return typeof value === 'string' && UUID_RE.test(value)
 }
 
+/** Accepts the spacing people actually type, e.g. "024 123 4567". */
+export function normalisePhone(value) {
+    return typeof value === 'string' ? value.replace(/[\s-]/g, '') : ''
+}
+
 export function isValidGhanaPhone(value) {
-    return typeof value === 'string' && GHANA_PHONE_RE.test(value.trim())
+    return GHANA_PHONE_RE.test(normalisePhone(value))
+}
+
+export function normaliseName(value) {
+    return typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''
 }
 
 export function isValidName(value) {
-    return typeof value === 'string' && NAME_RE.test(value.trim())
+    return NAME_RE.test(normaliseName(value))
 }
 
 export function isValidDateString(value) {
     if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
-    const date = new Date(value)
-    return !Number.isNaN(date.getTime())
+    // Date parsing alone accepts impossible dates such as 2001-02-30 by rolling
+    // them into the next month, so the parsed value is compared back.
+    const [y, m, d] = value.split('-').map(Number)
+    const date = new Date(Date.UTC(y, m - 1, d))
+    return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d
 }
 
-// Exact calendar-based age, not a 365.25-day approximation.
-export function calculateAge(dobString) {
-    const dob = new Date(dobString)
-    const now = new Date()
-    let age = now.getFullYear() - dob.getFullYear()
-    const monthDiff = now.getMonth() - dob.getMonth()
-    if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < dob.getDate())) {
+/** Exact calendar age, not a 365.25-day approximation. */
+export function calculateAge(dobString, now = new Date()) {
+    const [y, m, d] = dobString.split('-').map(Number)
+    let age = now.getFullYear() - y
+    const monthDiff = now.getMonth() + 1 - m
+    if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < d)) {
         age--
     }
     return age
 }
 
-export function isEligibleAge(dobString) {
-    if (!isValidDateString(dobString)) return false
-    const dob = new Date(dobString)
-    if (dob.getTime() > Date.now()) return false
-    const age = calculateAge(dobString)
-    return age >= 18 && age <= 35
+/**
+ * Eligibility with the reason attached.
+ *
+ * Returning the message alongside the verdict keeps the form and the API from
+ * drifting apart, and tells the voter which rule they failed rather than a
+ * generic "invalid date of birth".
+ */
+export function checkAgeEligibility(dobString, now = new Date()) {
+    if (!isValidDateString(dobString)) {
+        return { valid: false, message: 'Please enter a valid date of birth.' }
+    }
+
+    const [y, m, d] = dobString.split('-').map(Number)
+    if (new Date(Date.UTC(y, m - 1, d)).getTime() > now.getTime()) {
+        return { valid: false, message: 'Your date of birth cannot be in the future.' }
+    }
+
+    const age = calculateAge(dobString, now)
+
+    if (age < MIN_AGE) {
+        return {
+            valid: false,
+            age,
+            message: `You must be at least ${MIN_AGE} years old to vote in this election.`,
+        }
+    }
+    if (age > MAX_AGE) {
+        return {
+            valid: false,
+            age,
+            message: `The Youth Parliament is open to voters aged ${MIN_AGE} to ${MAX_AGE}.`,
+        }
+    }
+
+    return { valid: true, age }
+}
+
+export function isEligibleAge(dobString, now = new Date()) {
+    return checkAgeEligibility(dobString, now).valid
+}
+
+/**
+ * `min`/`max` bounds for the date-of-birth input, so the native mobile date
+ * picker cannot offer an ineligible year in the first place.
+ */
+export function dobBounds(now = new Date()) {
+    const iso = (dt) => dt.toISOString().slice(0, 10)
+
+    const max = new Date(now)
+    max.setFullYear(max.getFullYear() - MIN_AGE)
+
+    const min = new Date(now)
+    min.setFullYear(min.getFullYear() - MAX_AGE - 1)
+    min.setDate(min.getDate() + 1)
+
+    return { min: iso(min), max: iso(max) }
 }

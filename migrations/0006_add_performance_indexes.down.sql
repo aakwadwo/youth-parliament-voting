@@ -1,0 +1,10 @@
+drop index if exists votes_constituency_candidate_idx;
+drop index if exists votes_candidate_idx;
+drop index if exists votes_voted_at_idx;
+drop index if exists voters_voter_phone_key;
+drop index if exists voters_phone_dob_idx;
+drop index if exists voters_constituency_idx;
+drop index if exists voters_constituency_has_voted_idx;
+drop index if exists candidates_constituency_active_idx;
+drop index if exists constituencies_name_idx;
+drop index if exists constituencies_region_idx;

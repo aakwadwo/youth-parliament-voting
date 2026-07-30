@@ -1,277 +1,499 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { Plus, ArrowLeft, Search, Upload, RefreshCw } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
+import { Field } from '@/components/ui/field'
+import { Alert } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { EmptyState, Spinner } from '@/components/ui/feedback'
+import { DataTable } from '@/components/ui/data-table'
+import { SectionHeader } from '@/components/admin/SectionHeader'
 import { useFetch } from '@/lib/useFetch'
 
+const MAX_IMPORT_ROWS = 500
+
+/**
+ * Parses a CSV of `name,region,code`.
+ *
+ * The previous parser split every line on a bare comma, which silently
+ * corrupted any constituency whose name contains one — and it dropped invalid
+ * rows without telling anyone, so a 275-row import could quietly land 240 rows
+ * and report success. This one honours RFC 4180 quoting and reports exactly
+ * which lines it rejected and why.
+ */
+export function parseConstituencyCsv(text) {
+    const rows = []
+    const errors = []
+
+    const lines = text
+        .replace(/\r\n?/g, '\n')
+        .split('\n')
+        .filter((line) => line.trim() !== '')
+
+    if (lines.length === 0) return { rows, errors: ['The file is empty.'] }
+
+    // Skip a header row if one is present.
+    const startIndex = /^\s*"?name"?\s*,/i.test(lines[0]) ? 1 : 0
+
+    for (let i = startIndex; i < lines.length; i++) {
+        const line = lines[i]
+        const cells = []
+        let current = ''
+        let inQuotes = false
+
+        for (let c = 0; c < line.length; c++) {
+            const char = line[c]
+            if (inQuotes) {
+                if (char === '"') {
+                    if (line[c + 1] === '"') {
+                        current += '"'
+                        c++
+                    } else {
+                        inQuotes = false
+                    }
+                } else {
+                    current += char
+                }
+            } else if (char === '"') {
+                inQuotes = true
+            } else if (char === ',') {
+                cells.push(current)
+                current = ''
+            } else {
+                current += char
+            }
+        }
+        cells.push(current)
+
+        const [name = '', region = '', code = ''] = cells.map((c) => c.trim())
+        const codeNum = Number.parseInt(code, 10)
+
+        if (!name || !region || !Number.isInteger(codeNum) || codeNum < 0) {
+            errors.push(`Line ${i + 1}: needs a name, a region and a whole-number code.`)
+            continue
+        }
+
+        rows.push({ name, region, code: codeNum })
+    }
+
+    return { rows, errors }
+}
+
 export default function Constituencies() {
-    const { data: constituencies, loading, error: loadError, reload: loadConstituencies } = useFetch('/api/admin/constituencies', {
+    const {
+        data: constituencies,
+        loading,
+        error: loadError,
+        reload,
+    } = useFetch('/api/admin/constituencies', {
         initialData: [],
-        errorMessage: 'Could not load constituencies. Please refresh the page.',
+        errorMessage: 'Could not load constituencies.',
     })
+
     const [search, setSearch] = useState('')
-    const [view, setView] = useState('list') // list | add | import
+    const [regionFilter, setRegionFilter] = useState('all')
+    const [view, setView] = useState('list')
     const [form, setForm] = useState({ name: '', region: '', code: '' })
+    const [fieldErrors, setFieldErrors] = useState({})
     const [formError, setFormError] = useState('')
     const [formLoading, setFormLoading] = useState(false)
     const [csvError, setCsvError] = useState('')
+    const [csvWarnings, setCsvWarnings] = useState([])
     const [csvLoading, setCsvLoading] = useState(false)
     const [successMessage, setSuccessMessage] = useState('')
 
-    async function handleAdd() {
-        if (!form.name.trim() || !form.region.trim() || !form.code) {
-            setFormError('All fields are required')
-            return
+    const regions = useMemo(
+        () => [...new Set(constituencies.map((c) => c.region).filter(Boolean))].sort(),
+        [constituencies]
+    )
+
+    async function handleAdd(event) {
+        event.preventDefault()
+
+        const errors = {}
+        if (!form.name.trim()) errors.name = 'Enter the constituency name.'
+        if (!form.region.trim()) errors.region = 'Enter the region.'
+        const codeNum = Number.parseInt(form.code, 10)
+        if (!Number.isInteger(codeNum) || codeNum < 0) {
+            errors.code = 'Enter a whole-number code, e.g. 1.'
         }
+
+        setFieldErrors(errors)
+        if (Object.keys(errors).length > 0) return
+
         setFormLoading(true)
         setFormError('')
         try {
             const res = await fetch('/api/admin/constituencies', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(form),
+                body: JSON.stringify({ ...form, code: codeNum }),
             })
             const data = await res.json()
             if (!res.ok) {
-                setFormError(data.error)
-            } else {
-                setForm({ name: '', region: '', code: '' })
-                setView('list')
-                setSuccessMessage('Constituency added successfully')
-                loadConstituencies()
-                setTimeout(() => setSuccessMessage(''), 3000)
+                setFormError(data.error ?? 'Could not add the constituency.')
+                return
             }
+            setForm({ name: '', region: '', code: '' })
+            setFieldErrors({})
+            setView('list')
+            setSuccessMessage(`${data.name} added successfully.`)
+            reload()
         } catch {
-            setFormError('Something went wrong. Please try again.')
+            setFormError('Could not reach the server. Please try again.')
         } finally {
             setFormLoading(false)
         }
     }
 
-    async function handleCSV(e) {
-        const file = e.target.files[0]
+    async function handleCsv(event) {
+        const file = event.target.files?.[0]
         if (!file) return
+
         setCsvError('')
+        setCsvWarnings([])
         setCsvLoading(true)
 
-        const text = await file.text()
-        const lines = text.trim().split('\n').slice(1) // skip header
-
-        const parsed = []
-        for (const line of lines) {
-            const [name, region, code] = line.split(',').map(s => s.trim().replace(/"/g, ''))
-            if (!name || !region || !code || isNaN(parseInt(code))) continue
-            parsed.push({ name, region, code: parseInt(code) })
-        }
-
-        if (parsed.length === 0) {
-            setCsvError('No valid rows found. Check your CSV format.')
-            setCsvLoading(false)
-            return
-        }
-
         try {
+            const { rows, errors } = parseConstituencyCsv(await file.text())
+
+            if (rows.length === 0) {
+                setCsvError(
+                    errors[0] ?? 'No valid rows found. Check the columns are name, region, code.'
+                )
+                return
+            }
+            if (rows.length > MAX_IMPORT_ROWS) {
+                setCsvError(`Import at most ${MAX_IMPORT_ROWS} rows at a time.`)
+                return
+            }
+
             const res = await fetch('/api/admin/constituencies/bulk', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ constituencies: parsed }),
+                body: JSON.stringify({ constituencies: rows }),
             })
             const data = await res.json()
+
             if (!res.ok) {
-                setCsvError(data.error)
-            } else {
-                setView('list')
-                setSuccessMessage(`${data.count} constituencies imported successfully`)
-                loadConstituencies()
-                setTimeout(() => setSuccessMessage(''), 3000)
+                setCsvError(data.error ?? 'Could not import the file.')
+                return
             }
+
+            // Skipped rows are reported rather than silently dropped.
+            setCsvWarnings(errors)
+            setView('list')
+            setSuccessMessage(
+                `${data.count} constituencies imported.` +
+                    (errors.length > 0 ? ` ${errors.length} row(s) were skipped.` : '')
+            )
+            reload()
         } catch {
-            setCsvError('Something went wrong. Please try again.')
+            setCsvError('Could not read the file. Please try again.')
         } finally {
             setCsvLoading(false)
+            event.target.value = ''
         }
     }
 
-    const filtered = constituencies.filter(c =>
-        c.name.toLowerCase().includes(search.toLowerCase()) ||
-        c.region.toLowerCase().includes(search.toLowerCase())
-    )
+    const filtered = useMemo(() => {
+        const term = search.trim().toLowerCase()
+        return constituencies.filter((c) => {
+            if (regionFilter !== 'all' && c.region !== regionFilter) return false
+            if (!term) return true
+            return (
+                c.name.toLowerCase().includes(term) ||
+                (c.region ?? '').toLowerCase().includes(term) ||
+                String(c.code).includes(term)
+            )
+        })
+    }, [constituencies, search, regionFilter, ])
+
+    const columns = [
+        {
+            key: 'name',
+            header: 'Constituency',
+            primary: true,
+            cell: (c) => (
+                <span className="flex flex-col">
+                    <span className="font-medium">{c.name}</span>
+                    <span className="numeric text-xs text-muted-foreground">Code {c.code}</span>
+                </span>
+            ),
+        },
+        {
+            key: 'region',
+            header: 'Region',
+            cell: (c) => <span className="text-muted-foreground">{c.region}</span>,
+        },
+        {
+            key: 'candidates',
+            header: 'Candidates',
+            align: 'right',
+            cell: (c) => {
+                const count = c.candidates?.[0]?.count ?? 0
+                return (
+                    <Badge variant={count > 0 ? 'success' : 'warning'}>
+                        {count} {count === 1 ? 'candidate' : 'candidates'}
+                    </Badge>
+                )
+            },
+        },
+    ]
 
     return (
         <div className="space-y-6">
-
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-semibold text-black">Constituencies</h1>
-                    <p className="text-zinc-500 text-sm mt-1">{constituencies.length} total</p>
-                </div>
-                {view === 'list' && (
-                    <div className="flex gap-2">
+            <SectionHeader
+                title="Constituencies"
+                description={`${constituencies.length} constituencies across ${regions.length} regions`}
+                actions={
+                    view === 'list' ? (
+                        <>
+                            <Button variant="outline" onClick={() => setView('import')}>
+                                <Upload aria-hidden="true" />
+                                Import CSV
+                            </Button>
+                            <Button onClick={() => setView('add')}>
+                                <Plus aria-hidden="true" />
+                                Add constituency
+                            </Button>
+                        </>
+                    ) : (
                         <Button
                             variant="outline"
-                            className="text-sm"
-                            onClick={() => setView('import')}
+                            onClick={() => {
+                                setView('list')
+                                setFormError('')
+                                setCsvError('')
+                            }}
                         >
-                            Bulk import CSV
+                            <ArrowLeft aria-hidden="true" />
+                            Back to list
                         </Button>
-                        <Button
-                            className="bg-black text-white hover:bg-zinc-800 text-sm"
-                            onClick={() => setView('add')}
-                        >
-                            Add constituency
-                        </Button>
-                    </div>
-                )}
-                {view !== 'list' && (
-                    <Button
-                        variant="outline"
-                        className="text-sm"
-                        onClick={() => { setView('list'); setFormError(''); setCsvError('') }}
-                    >
-                        Back to list
-                    </Button>
-                )}
-            </div>
+                    )
+                }
+            />
 
-            {/* Success message */}
-            {successMessage && (
-                <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-[#006B3F]">
+            {successMessage ? (
+                <Alert variant="success" title="Saved">
                     {successMessage}
-                </div>
-            )}
+                </Alert>
+            ) : null}
 
-            {/* LIST VIEW */}
-            {view === 'list' && (
+            {csvWarnings.length > 0 ? (
+                <Alert variant="warning" title={`${csvWarnings.length} row(s) were skipped`}>
+                    <ul className="mt-1 list-inside list-disc space-y-0.5">
+                        {csvWarnings.slice(0, 5).map((w) => (
+                            <li key={w}>{w}</li>
+                        ))}
+                    </ul>
+                    {csvWarnings.length > 5 ? (
+                        <p className="mt-1">…and {csvWarnings.length - 5} more.</p>
+                    ) : null}
+                </Alert>
+            ) : null}
+
+            {view === 'list' ? (
                 <div className="space-y-4">
-                    {loadError && <p className="text-sm text-red-600" role="alert" aria-live="polite">{loadError}</p>}
-                    <Input
-                        placeholder="Search by name or region..."
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        className="max-w-sm h-10"
-                    />
-                    <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden">
-                        <table className="w-full text-sm">
-                            <thead>
-                            <tr className="border-b border-zinc-100">
-                                <th className="text-left px-5 py-3 text-zinc-500 font-medium">Code</th>
-                                <th className="text-left px-5 py-3 text-zinc-500 font-medium">Name</th>
-                                <th className="text-left px-5 py-3 text-zinc-500 font-medium">Region</th>
-                                <th className="text-left px-5 py-3 text-zinc-500 font-medium">Active candidates</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            {loading && (
-                                <tr>
-                                    <td colSpan={4} className="px-5 py-8 text-center text-zinc-500">Loading...</td>
-                                </tr>
-                            )}
-                            {!loading && filtered.length === 0 && (
-                                <tr>
-                                    <td colSpan={4} className="px-5 py-8 text-center text-zinc-500">No constituencies found</td>
-                                </tr>
-                            )}
-                            {!loading && filtered.map((c, i) => (
-                                <tr key={c.id} className={i % 2 === 0 ? 'bg-white' : 'bg-zinc-50'}>
-                                    <td className="px-5 py-3 text-zinc-500 font-mono text-xs">{c.code}</td>
-                                    <td className="px-5 py-3 font-medium text-black">{c.name}</td>
-                                    <td className="px-5 py-3 text-zinc-500">{c.region}</td>
-                                    <td className="px-5 py-3">
-            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                c.candidates?.[0]?.count > 0
-                    ? 'bg-green-50 text-[#006B3F] border border-green-200'
-                    : 'bg-zinc-100 text-zinc-500 border border-zinc-200'
-            }`}>
-              {c.candidates?.[0]?.count ?? 0}
-            </span>
-                                    </td>
-                                </tr>
-                            ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            )}
+                    {loadError ? (
+                        <Alert variant="danger" title="Could not load constituencies">
+                            <p>{loadError}</p>
+                            <Button variant="outline" size="sm" className="mt-3" onClick={reload}>
+                                <RefreshCw aria-hidden="true" />
+                                Try again
+                            </Button>
+                        </Alert>
+                    ) : null}
 
-            {/* ADD VIEW */}
-            {view === 'add' && (
-                <Card className="max-w-md border border-zinc-200 shadow-none">
-                    <CardContent className="p-6 space-y-5">
-                        <div className="space-y-2">
-                            <Label className="text-base">Constituency name</Label>
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                        <div className="relative flex-1 sm:max-w-sm">
+                            <Search
+                                aria-hidden="true"
+                                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                            />
                             <Input
-                                placeholder="e.g. Accra Central"
-                                className="h-11"
-                                value={form.name}
-                                onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+                                type="search"
+                                className="pl-9"
+                                placeholder="Search name, region or code"
+                                aria-label="Search constituencies"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label className="text-base">Region</Label>
-                            <Input
-                                placeholder="e.g. Greater Accra"
-                                className="h-11"
-                                value={form.region}
-                                onChange={e => setForm(p => ({ ...p, region: e.target.value }))}
-                            />
+
+                        <div className="sm:w-56">
+                            <label htmlFor="region-filter" className="sr-only">
+                                Filter by region
+                            </label>
+                            <select
+                                id="region-filter"
+                                value={regionFilter}
+                                onChange={(e) => setRegionFilter(e.target.value)}
+                                className="h-10 w-full rounded-lg border border-input bg-background px-3 text-base focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none md:text-sm"
+                            >
+                                <option value="all">All regions</option>
+                                {regions.map((r) => (
+                                    <option key={r} value={r}>
+                                        {r}
+                                    </option>
+                                ))}
+                            </select>
                         </div>
-                        <div className="space-y-2">
-                            <Label className="text-base">Code</Label>
-                            <Input
-                                placeholder="e.g. 1"
-                                type="number"
-                                className="h-11"
-                                value={form.code}
-                                onChange={e => setForm(p => ({ ...p, code: e.target.value }))}
+                    </div>
+
+                    <p className="text-sm text-muted-foreground" aria-live="polite">
+                        Showing {filtered.length} of {constituencies.length} constituencies
+                    </p>
+
+                    <DataTable
+                        caption="Constituencies, their regions and candidate counts"
+                        columns={columns}
+                        rows={filtered}
+                        getRowKey={(c) => c.id}
+                        loading={loading}
+                        empty={
+                            <EmptyState
+                                title={
+                                    constituencies.length === 0
+                                        ? 'No constituencies yet'
+                                        : 'No constituencies match those filters'
+                                }
+                                description={
+                                    constituencies.length === 0
+                                        ? 'Import the constituency roll as a CSV to get started.'
+                                        : 'Try a different search term or region.'
+                                }
+                                action={
+                                    constituencies.length === 0 ? (
+                                        <Button onClick={() => setView('import')}>
+                                            <Upload aria-hidden="true" />
+                                            Import CSV
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => {
+                                                setSearch('')
+                                                setRegionFilter('all')
+                                            }}
+                                        >
+                                            Clear filters
+                                        </Button>
+                                    )
+                                }
                             />
-                        </div>
-                        {formError && <p className="text-sm text-red-600" role="alert" aria-live="polite">{formError}</p>}
-                        <Button
-                            className="w-full bg-black text-white hover:bg-zinc-800 h-11"
-                            onClick={handleAdd}
-                            disabled={formLoading}
-                        >
-                            {formLoading ? 'Adding...' : 'Add constituency'}
-                        </Button>
+                        }
+                    />
+                </div>
+            ) : null}
+
+            {view === 'add' ? (
+                <Card className="max-w-xl">
+                    <CardContent>
+                        <form onSubmit={handleAdd} noValidate className="space-y-5">
+                            <Field id="c_name" label="Constituency name" required error={fieldErrors.name}>
+                                <Input
+                                    placeholder="e.g. Accra Central"
+                                    value={form.name}
+                                    onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                                />
+                            </Field>
+                            <Field id="c_region" label="Region" required error={fieldErrors.region}>
+                                <Input
+                                    placeholder="e.g. Greater Accra"
+                                    value={form.region}
+                                    onChange={(e) =>
+                                        setForm((p) => ({ ...p, region: e.target.value }))
+                                    }
+                                />
+                            </Field>
+                            <Field
+                                id="c_code"
+                                label="Code"
+                                hint="A unique whole number identifying this constituency."
+                                required
+                                error={fieldErrors.code}
+                            >
+                                <Input
+                                    type="number"
+                                    inputMode="numeric"
+                                    min={0}
+                                    placeholder="e.g. 1"
+                                    value={form.code}
+                                    onChange={(e) => setForm((p) => ({ ...p, code: e.target.value }))}
+                                />
+                            </Field>
+
+                            {formError ? (
+                                <Alert variant="danger" title="Could not add constituency">
+                                    {formError}
+                                </Alert>
+                            ) : null}
+
+                            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setView('list')}
+                                    disabled={formLoading}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button type="submit" disabled={formLoading}>
+                                    {formLoading ? <Spinner /> : null}
+                                    {formLoading ? 'Adding…' : 'Add constituency'}
+                                </Button>
+                            </div>
+                        </form>
                     </CardContent>
                 </Card>
-            )}
+            ) : null}
 
-            {/* IMPORT VIEW */}
-            {view === 'import' && (
-                <Card className="max-w-md border border-zinc-200 shadow-none">
-                    <CardContent className="p-6 space-y-5">
+            {view === 'import' ? (
+                <Card className="max-w-xl">
+                    <CardContent className="space-y-5">
                         <div>
-                            <p className="text-base font-medium text-black">Import from CSV</p>
-                            <p className="text-sm text-zinc-500 mt-1">
-                                CSV must have columns in this order: <span className="font-mono text-xs bg-zinc-100 px-1 py-0.5 rounded">name, region, code</span>
+                            <h2 className="font-semibold">Import constituencies from CSV</h2>
+                            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                                Columns must be in this order: name, region, code. A header row is
+                                optional. Existing constituencies with a matching code are updated
+                                rather than duplicated.
                             </p>
                         </div>
-                        <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-3">
-                            <p className="text-xs text-zinc-500 font-mono">name,region,code</p>
-                            <p className="text-xs text-zinc-500 font-mono">Accra Central,Greater Accra,1</p>
-                            <p className="text-xs text-zinc-500 font-mono">Tema West,Greater Accra,2</p>
-                        </div>
-                        <div className="space-y-2">
-                            <Label className="text-base">Upload CSV file</Label>
+
+                        <pre className="overflow-x-auto rounded-lg border border-border bg-muted p-3 text-xs">
+                            <code>{`name,region,code
+Accra Central,Greater Accra,1
+Tema West,Greater Accra,2
+"Sekondi, Takoradi",Western,3`}</code>
+                        </pre>
+
+                        <Field
+                            id="csv_file"
+                            label="CSV file"
+                            hint={`Up to ${MAX_IMPORT_ROWS} rows per import.`}
+                            error={csvError}
+                        >
                             <Input
                                 type="file"
-                                accept=".csv"
-                                className="h-11"
-                                onChange={handleCSV}
+                                accept=".csv,text/csv"
+                                onChange={handleCsv}
                                 disabled={csvLoading}
                             />
-                        </div>
-                        {csvError && <p className="text-sm text-red-600" role="alert" aria-live="polite">{csvError}</p>}
-                        {csvLoading && <p className="text-sm text-zinc-500">Importing...</p>}
+                        </Field>
+
+                        {csvLoading ? (
+                            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Spinner />
+                                Importing…
+                            </p>
+                        ) : null}
                     </CardContent>
                 </Card>
-            )}
-
+            ) : null}
         </div>
     )
 }

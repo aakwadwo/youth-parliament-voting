@@ -1,219 +1,378 @@
 'use client'
 
 import { useState } from 'react'
+import { RefreshCw } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
+import { Field } from '@/components/ui/field'
+import { Alert } from '@/components/ui/alert'
+import { StatusPill } from '@/components/ui/badge'
+import { Skeleton, EmptyState } from '@/components/ui/feedback'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { SectionHeader } from '@/components/admin/SectionHeader'
 import { useFetch } from '@/lib/useFetch'
+import { formatWhen } from '@/lib/voter-client'
+
+const ACTION_LABELS = {
+    admin_login: 'Administrator signed in',
+    admin_login_failed: 'Failed sign-in attempt',
+    admin_logout: 'Administrator signed out',
+    voting_opened: 'Voting opened',
+    voting_closed: 'Voting closed',
+    election_settings_changed: 'Election settings changed',
+    candidate_created: 'Candidate added',
+    candidate_updated: 'Candidate updated',
+    candidate_activated: 'Candidate restored to ballot',
+    candidate_deactivated: 'Candidate withdrawn from ballot',
+    constituency_created: 'Constituency added',
+    constituency_imported: 'Constituencies imported',
+    results_exported: 'Election report exported',
+}
+
+const ACTION_TONE = {
+    admin_login_failed: 'danger',
+    voting_opened: 'success',
+    voting_closed: 'warning',
+    candidate_deactivated: 'warning',
+    results_exported: 'brand',
+}
+
+/**
+ * `<input type="datetime-local">` speaks naive local time, while the database
+ * stores `timestamptz`.
+ *
+ * The previous code called `.toISOString().slice(0, 16)` to fill the field,
+ * which displays UTC, and sent the raw field value straight back, which
+ * Postgres then interpreted in the server's timezone. Ghana sits at GMT+0
+ * year-round so this happened to look correct there, and would have silently
+ * shifted the poll's opening and closing times by hours for an administrator
+ * working from anywhere else. These two functions convert explicitly in both
+ * directions.
+ */
+function toLocalInputValue(isoString) {
+    if (!isoString) return ''
+    const date = new Date(isoString)
+    if (Number.isNaN(date.getTime())) return ''
+    const pad = (n) => String(n).padStart(2, '0')
+    return (
+        `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+        `T${pad(date.getHours())}:${pad(date.getMinutes())}`
+    )
+}
+
+function fromLocalInputValue(value) {
+    if (!value) return null
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? null : date.toISOString()
+}
 
 export default function Settings() {
-    const { data: settings, setData: setSettings, loading, error: loadError } = useFetch('/api/admin/settings', {
-        errorMessage: 'Could not load settings. Please refresh the page.',
+    const {
+        data: settings,
+        setData: setSettings,
+        loading,
+        error: loadError,
+        reload,
+    } = useFetch('/api/admin/settings', {
+        errorMessage: 'Could not load election settings.',
     })
-    const { data: auditLog, error: auditLogError, reload: loadAuditLog } = useFetch('/api/admin/audit-log', {
+
+    const {
+        data: auditLog,
+        error: auditLogError,
+        reload: reloadAuditLog,
+    } = useFetch('/api/admin/audit-log', {
         initialData: [],
         errorMessage: 'Could not load recent activity.',
     })
+
     const [saving, setSaving] = useState(false)
+    const [togglePending, setTogglePending] = useState(false)
+    const [confirmingToggle, setConfirmingToggle] = useState(false)
     const [successMessage, setSuccessMessage] = useState('')
     const [error, setError] = useState('')
-    const [confirmingVoteToggle, setConfirmingVoteToggle] = useState(false)
+    const [fieldErrors, setFieldErrors] = useState({})
 
-    const ACTION_LABELS = {
-        voting_opened: 'Voting opened',
-        voting_closed: 'Voting closed',
-        election_settings_changed: 'Election settings changed',
-        candidate_activated: 'Candidate activated',
-        candidate_deactivated: 'Candidate deactivated',
+    async function patchSettings(payload) {
+        const res = await fetch('/api/admin/settings', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error ?? 'Request failed')
+        return data
     }
 
-    async function handleSave() {
+    async function handleSave(event) {
+        event.preventDefault()
+
+        const errors = {}
+        if (!settings.election_name?.trim()) {
+            errors.election_name = 'Give the election a name.'
+        }
+        const opens = fromLocalInputValue(settings._opensLocal)
+        const closes = fromLocalInputValue(settings._closesLocal)
+        if (opens && closes && new Date(opens) >= new Date(closes)) {
+            errors.voting_closes_at = 'Closing time must be after the opening time.'
+        }
+
+        setFieldErrors(errors)
+        if (Object.keys(errors).length > 0) return
+
         setSaving(true)
         setError('')
         try {
-            const res = await fetch('/api/admin/settings', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(settings),
+            await patchSettings({
+                id: settings.id,
+                election_name: settings.election_name,
+                voting_opens_at: opens,
+                voting_closes_at: closes,
+                is_active: settings.is_active,
             })
-            const data = await res.json()
-            if (!res.ok) {
-                setError(data.error)
-            } else {
-                setSuccessMessage('Settings saved successfully')
-                setTimeout(() => setSuccessMessage(''), 3000)
-                loadAuditLog()
-            }
-        } catch {
-            setError('Something went wrong. Please try again.')
+            setSuccessMessage('Election settings saved.')
+            reloadAuditLog()
+        } catch (err) {
+            setError(err.message)
         } finally {
             setSaving(false)
         }
     }
 
     async function confirmToggleVoting() {
-        setConfirmingVoteToggle(false)
-        const updated = { ...settings, is_active: !settings.is_active }
-        setSettings(updated)
+        const previous = settings
+        const next = { ...settings, is_active: !settings.is_active }
+
+        setTogglePending(true)
+        setError('')
+        setSettings(next)
+
         try {
-            const res = await fetch('/api/admin/settings', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updated),
+            await patchSettings({
+                id: next.id,
+                election_name: next.election_name,
+                voting_opens_at: fromLocalInputValue(next._opensLocal),
+                voting_closes_at: fromLocalInputValue(next._closesLocal),
+                is_active: next.is_active,
             })
-            if (!res.ok) throw new Error()
-            setSuccessMessage(updated.is_active ? 'Voting is now open' : 'Voting is now closed')
-            setTimeout(() => setSuccessMessage(''), 3000)
-            loadAuditLog()
-        } catch {
-            setSettings(settings)
-            setError('Could not update voting status. Please try again.')
+            setSuccessMessage(next.is_active ? 'Voting is now open.' : 'Voting is now closed.')
+            reloadAuditLog()
+        } catch (err) {
+            // Roll the optimistic update back so the toggle never shows a state
+            // the database does not actually hold.
+            setSettings(previous)
+            setError(err.message ?? 'Could not change the voting status.')
+        } finally {
+            setTogglePending(false)
+            setConfirmingToggle(false)
         }
     }
 
-    if (loading) return (
-        <div className="space-y-4">
-            <div className="h-8 w-48 bg-zinc-100 rounded-lg animate-pulse" />
-            <div className="h-48 bg-zinc-100 rounded-xl animate-pulse" />
-        </div>
-    )
+    if (loading) {
+        return (
+            <div className="space-y-6">
+                <Skeleton className="h-9 w-40" />
+                <Skeleton className="h-32 w-full rounded-xl" />
+                <Skeleton className="h-72 w-full rounded-xl" />
+            </div>
+        )
+    }
 
-    if (loadError) return <p className="text-sm text-red-600" role="alert" aria-live="polite">{loadError}</p>
+    if (loadError) {
+        return (
+            <div className="space-y-6">
+                <SectionHeader title="Settings" />
+                <Alert variant="danger" title="Could not load settings">
+                    <p>{loadError}</p>
+                    <Button variant="outline" size="sm" className="mt-3" onClick={reload}>
+                        <RefreshCw aria-hidden="true" />
+                        Try again
+                    </Button>
+                </Alert>
+            </div>
+        )
+    }
+
     if (!settings) return null
+
+    // Local-time mirrors of the stored timestamps, initialised once on load.
+    const opensLocal = settings._opensLocal ?? toLocalInputValue(settings.voting_opens_at)
+    const closesLocal = settings._closesLocal ?? toLocalInputValue(settings.voting_closes_at)
 
     return (
         <div className="space-y-6">
+            <SectionHeader
+                title="Settings"
+                description="Election configuration and the administrative audit trail"
+            />
 
-            <div>
-                <h1 className="text-2xl font-semibold text-black">Settings</h1>
-                <p className="text-zinc-500 text-sm mt-1">Manage election configuration</p>
-            </div>
-
-            {successMessage && (
-                <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-sm text-[#006B3F]">
+            {successMessage ? (
+                <Alert variant="success" title="Saved">
                     {successMessage}
-                </div>
-            )}
+                </Alert>
+            ) : null}
 
-            {/* Voting toggle */}
-            <Card className="border border-zinc-200 shadow-none">
-                <CardContent className="p-6 space-y-4">
-                    <div className="flex items-center justify-between">
+            {error ? (
+                <Alert variant="danger" title="Could not save">
+                    {error}
+                </Alert>
+            ) : null}
+
+            {/* Voting switch */}
+            <Card>
+                <CardContent>
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="space-y-1">
-                            <p className="font-medium text-black">Voting status</p>
-                            <p className="text-sm text-zinc-500">
-                                {settings.is_active ? 'Voting is currently open' : 'Voting is currently closed'}
+                            <h2 className="font-semibold">Voting status</h2>
+                            <p className="text-sm text-muted-foreground">
+                                {settings.is_active
+                                    ? 'Voters can cast ballots right now.'
+                                    : 'Voting is closed. No ballot can be cast.'}
                             </p>
                         </div>
-                        <button
-                            onClick={() => setConfirmingVoteToggle(true)}
-                            aria-label={settings.is_active ? 'Close voting' : 'Open voting'}
-                            className={`relative w-12 h-6 rounded-full transition-colors ${
-                                settings.is_active ? 'bg-[#006B3F]' : 'bg-zinc-200'
-                            }`}
-                        >
-              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-                  settings.is_active ? 'translate-x-6' : 'translate-x-0.5'
-              }`} />
-                        </button>
+                        <div className="flex items-center gap-3">
+                            <StatusPill
+                                variant={settings.is_active ? 'success' : 'neutral'}
+                                pulse={settings.is_active}
+                            >
+                                {settings.is_active ? 'Open' : 'Closed'}
+                            </StatusPill>
+                            <Button
+                                variant={settings.is_active ? 'destructive' : 'default'}
+                                onClick={() => setConfirmingToggle(true)}
+                                disabled={togglePending}
+                            >
+                                {settings.is_active ? 'Close voting' : 'Open voting'}
+                            </Button>
+                        </div>
                     </div>
-
-                    {confirmingVoteToggle && (
-                        <div role="alert" className="flex items-center justify-between gap-4 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-                            <p className="text-sm text-amber-800">
-                                Are you sure you want to {settings.is_active ? 'close' : 'open'} voting? This immediately affects every voter.
-                            </p>
-                            <div className="flex gap-2 flex-shrink-0">
-                                <Button variant="outline" className="text-sm h-8" onClick={() => setConfirmingVoteToggle(false)}>
-                                    Cancel
-                                </Button>
-                                <Button className="text-sm h-8 bg-black text-white hover:bg-zinc-800" onClick={confirmToggleVoting}>
-                                    Confirm
-                                </Button>
-                            </div>
-                        </div>
-                    )}
                 </CardContent>
             </Card>
 
             {/* Election details */}
-            <Card className="border border-zinc-200 shadow-none">
-                <CardContent className="p-6 space-y-5">
-                    <p className="font-medium text-black">Election details</p>
+            <Card>
+                <CardContent>
+                    <form onSubmit={handleSave} noValidate className="space-y-5">
+                        <h2 className="font-semibold">Election details</h2>
 
-                    <div className="space-y-2">
-                        <Label className="text-base">Election name</Label>
-                        <Input
-                            className="h-11"
-                            value={settings.election_name || ''}
-                            onChange={e => setSettings(p => ({ ...p, election_name: e.target.value }))}
-                        />
-                    </div>
+                        <Field
+                            id="election_name"
+                            label="Election name"
+                            hint="Shown to voters and printed on the exported report."
+                            required
+                            error={fieldErrors.election_name}
+                        >
+                            <Input
+                                value={settings.election_name ?? ''}
+                                onChange={(e) =>
+                                    setSettings((p) => ({ ...p, election_name: e.target.value }))
+                                }
+                            />
+                        </Field>
 
-                    <div className="space-y-2">
-                        <Label className="text-base">Voting opens</Label>
-                        <Input
-                            type="datetime-local"
-                            className="h-11"
-                            value={settings.voting_opens_at
-                                ? new Date(settings.voting_opens_at).toISOString().slice(0, 16)
-                                : ''}
-                            onChange={e => setSettings(p => ({ ...p, voting_opens_at: e.target.value }))}
-                        />
-                    </div>
+                        <div className="grid gap-5 sm:grid-cols-2">
+                            <Field
+                                id="voting_opens_at"
+                                label="Voting opens"
+                                hint="Your local time."
+                            >
+                                <Input
+                                    type="datetime-local"
+                                    value={opensLocal}
+                                    onChange={(e) =>
+                                        setSettings((p) => ({ ...p, _opensLocal: e.target.value }))
+                                    }
+                                />
+                            </Field>
 
-                    <div className="space-y-2">
-                        <Label className="text-base">Voting closes</Label>
-                        <Input
-                            type="datetime-local"
-                            className="h-11"
-                            value={settings.voting_closes_at
-                                ? new Date(settings.voting_closes_at).toISOString().slice(0, 16)
-                                : ''}
-                            onChange={e => setSettings(p => ({ ...p, voting_closes_at: e.target.value }))}
-                        />
-                    </div>
+                            <Field
+                                id="voting_closes_at"
+                                label="Voting closes"
+                                hint="Your local time."
+                                error={fieldErrors.voting_closes_at}
+                            >
+                                <Input
+                                    type="datetime-local"
+                                    value={closesLocal}
+                                    onChange={(e) =>
+                                        setSettings((p) => ({ ...p, _closesLocal: e.target.value }))
+                                    }
+                                />
+                            </Field>
+                        </div>
 
-                    {error && <p className="text-sm text-red-600" role="alert" aria-live="polite">{error}</p>}
-
-                    <Button
-                        className="w-full bg-black text-white hover:bg-zinc-800 h-11"
-                        onClick={handleSave}
-                        disabled={saving}
-                    >
-                        {saving ? 'Saving...' : 'Save changes'}
-                    </Button>
-
+                        <div className="flex justify-end">
+                            <Button type="submit" disabled={saving}>
+                                {saving ? 'Saving…' : 'Save changes'}
+                            </Button>
+                        </div>
+                    </form>
                 </CardContent>
             </Card>
 
-            {/* Audit log */}
-            <Card className="border border-zinc-200 shadow-none">
-                <CardContent className="p-6 space-y-4">
-                    <p className="font-medium text-black">Recent activity</p>
-                    {auditLogError && <p className="text-sm text-red-600" role="alert" aria-live="polite">{auditLogError}</p>}
-                    {!auditLogError && auditLog.length === 0 && (
-                        <p className="text-sm text-zinc-500">No admin actions recorded yet.</p>
-                    )}
-                    {auditLog.length > 0 && (
-                        <ul className="divide-y divide-zinc-100">
-                            {auditLog.map(entry => (
-                                <li key={entry.id} className="py-3 flex items-center justify-between gap-4">
-                                    <div>
-                                        <p className="text-sm font-medium text-black">
-                                            {ACTION_LABELS[entry.action] ?? entry.action}
+            {/* Audit trail */}
+            <Card>
+                <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between gap-4">
+                        <div>
+                            <h2 className="font-semibold">Recent administrative activity</h2>
+                            <p className="text-sm text-muted-foreground">
+                                Every action that can affect an election result
+                            </p>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={reloadAuditLog}>
+                            <RefreshCw aria-hidden="true" />
+                            <span className="sr-only sm:not-sr-only">Refresh</span>
+                        </Button>
+                    </div>
+
+                    {auditLogError ? (
+                        <Alert variant="danger">{auditLogError}</Alert>
+                    ) : auditLog.length === 0 ? (
+                        <EmptyState
+                            title="No activity recorded yet"
+                            description="Administrative actions appear here as they happen."
+                        />
+                    ) : (
+                        <ul className="divide-y divide-border">
+                            {auditLog.map((entry) => (
+                                <li
+                                    key={entry.id}
+                                    className="flex flex-col gap-1 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+                                >
+                                    <div className="min-w-0 space-y-1">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="text-sm font-medium">
+                                                {ACTION_LABELS[entry.action] ?? entry.action}
+                                            </span>
+                                            {ACTION_TONE[entry.action] ? (
+                                                <StatusPill variant={ACTION_TONE[entry.action]}>
+                                                    {entry.action === 'admin_login_failed'
+                                                        ? 'Security'
+                                                        : 'Notable'}
+                                                </StatusPill>
+                                            ) : null}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">
+                                            {[
+                                                entry.details?.candidate_name,
+                                                entry.actor_email ?? entry.details?.admin_email,
+                                                entry.details?.format
+                                                    ? `${String(entry.details.format).toUpperCase()} export`
+                                                    : null,
+                                            ]
+                                                .filter(Boolean)
+                                                .join(' · ') || 'No further detail recorded'}
                                         </p>
-                                        {entry.details?.candidate_name && (
-                                            <p className="text-xs text-zinc-500 mt-0.5">{entry.details.candidate_name}</p>
-                                        )}
-                                        {entry.details?.admin_email && (
-                                            <p className="text-xs text-zinc-500 mt-0.5">by {entry.details.admin_email}</p>
-                                        )}
                                     </div>
-                                    <p className="text-xs text-zinc-500 whitespace-nowrap">
-                                        {new Date(entry.performed_at).toLocaleString()}
-                                    </p>
+                                    <time
+                                        dateTime={entry.performed_at}
+                                        className="shrink-0 text-xs text-muted-foreground"
+                                    >
+                                        {formatWhen(entry.performed_at)}
+                                    </time>
                                 </li>
                             ))}
                         </ul>
@@ -221,6 +380,21 @@ export default function Settings() {
                 </CardContent>
             </Card>
 
+            <ConfirmDialog
+                open={confirmingToggle}
+                onOpenChange={setConfirmingToggle}
+                title={settings.is_active ? 'Close voting?' : 'Open voting?'}
+                description={
+                    settings.is_active
+                        ? 'Ballots will stop being accepted immediately. Voters partway through choosing a candidate will not be able to submit.'
+                        : 'Eligible registered voters will be able to cast ballots immediately.'
+                }
+                warning="This takes effect at once for every voter in the country, and is recorded in the audit log."
+                confirmLabel={settings.is_active ? 'Close voting' : 'Open voting'}
+                tone={settings.is_active ? 'destructive' : 'default'}
+                pending={togglePending}
+                onConfirm={confirmToggleVoting}
+            />
         </div>
     )
 }

@@ -1,8 +1,11 @@
 'use client'
 
 import { useEffect } from 'react'
+import Link from 'next/link'
 import * as Sentry from '@sentry/nextjs'
+
 import { Button } from '@/components/ui/button'
+import { PageShell, PageHeading } from '@/components/layout/PageShell'
 
 export default function Error({ error, reset }) {
     useEffect(() => {
@@ -11,23 +14,28 @@ export default function Error({ error, reset }) {
     }, [error])
 
     return (
-        <main className="min-h-screen bg-white flex flex-col items-center justify-center px-4 py-12">
-            <div className="max-w-md w-full text-center space-y-6">
-                <div className="flex justify-center">
-                    <div className="h-2 w-20 bg-[#CF0A0A]" />
-                    <div className="h-2 w-20 bg-[#FCD20F]" />
-                    <div className="h-2 w-20 bg-[#006B3F]" />
-                </div>
-                <div className="space-y-2">
-                    <h2 className="text-2xl font-semibold text-black">Something went wrong</h2>
-                    <p className="text-zinc-500 text-base leading-relaxed">
-                        An unexpected error occurred. Please try again, and contact support if the problem continues.
-                    </p>
-                </div>
-                <Button className="w-full h-11 text-base bg-black text-white hover:bg-zinc-800" onClick={reset}>
+        <PageShell width="sm">
+            <PageHeading
+                title="Something went wrong"
+                description="This page did not load. Your registration and any ballot you have already cast are unaffected."
+            />
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <Button size="lg" onClick={reset}>
                     Try again
                 </Button>
+                <Button asChild variant="outline" size="lg">
+                    <Link href="/">Back to home</Link>
+                </Button>
             </div>
-        </main>
+
+            {/* The digest is what support needs to find this exact failure in
+                the error log, so it is shown rather than hidden. */}
+            {error?.digest ? (
+                <p className="numeric mt-8 text-sm text-muted-foreground">
+                    Reference: {error.digest}
+                </p>
+            ) : null}
+        </PageShell>
     )
 }

@@ -1,288 +1,352 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Image from 'next/image'
+import { Check } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Alert, LiveRegion } from '@/components/ui/alert'
+import { Skeleton, EmptyState, Spinner } from '@/components/ui/feedback'
+import { PageShell, PageHeading } from '@/components/layout/PageShell'
+import { readVoter, clearVoter } from '@/lib/voter-client'
+import { cn } from '@/lib/utils'
 
-export default function CandidatesPage() {
+/**
+ * The ballot.
+ *
+ * A screen reader previously met a grid of plain buttons with no indication
+ * that they were mutually exclusive, that one was chosen, or how many there
+ * were. A ballot is precisely what the radio group pattern exists for, so this
+ * is a real radiogroup with roving tabindex and arrow-key navigation.
+ */
+export default function BallotPage() {
     const router = useRouter()
+
     const [voter, setVoter] = useState(null)
+    const [checkedSession, setCheckedSession] = useState(false)
     const [candidates, setCandidates] = useState([])
-    const [selectedCandidate, setSelectedCandidate] = useState(null)
-    const [step, setStep] = useState('candidates')
-    const [loading, setLoading] = useState(false)
     const [candidatesLoading, setCandidatesLoading] = useState(true)
     const [candidatesError, setCandidatesError] = useState('')
+    const [selected, setSelected] = useState(null)
+    const [step, setStep] = useState('select')
+    const [submitting, setSubmitting] = useState(false)
     const [error, setError] = useState('')
 
+    const optionRefs = useRef(new Map())
+
     useEffect(() => {
-        let voterData
-        try {
-            const saved = sessionStorage.getItem('voter')
-            if (!saved) { router.push('/vote'); return }
-            voterData = JSON.parse(saved)
-        } catch {
-            router.push('/vote')
+        const saved = readVoter()
+        if (!saved) {
+            router.replace('/login')
             return
         }
-        setVoter(voterData)
-        fetch(`/api/candidates?constituency_id=${voterData.constituency_id}`)
-            .then(r => r.json())
-            .then(setCandidates)
-            .catch(() => setCandidatesError('Could not load candidates. Please refresh the page.'))
-            .finally(() => setCandidatesLoading(false))
+        setVoter(saved)
+        setCheckedSession(true)
     }, [router])
 
+    const loadCandidates = useCallback(async (constituencyId) => {
+        setCandidatesLoading(true)
+        setCandidatesError('')
+        try {
+            const res = await fetch(`/api/candidates?constituency_id=${constituencyId}`)
+            if (!res.ok) throw new Error('failed')
+            setCandidates(await res.json())
+        } catch {
+            setCandidatesError('We could not load the candidates for your constituency.')
+        } finally {
+            setCandidatesLoading(false)
+        }
+    }, [])
+
+    useEffect(() => {
+        if (voter?.constituencyId) loadCandidates(voter.constituencyId)
+    }, [voter?.constituencyId, loadCandidates])
+
+    /** Arrow keys move between options and select, per the radio group pattern. */
+    function handleKeyDown(event, index) {
+        const delta = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.key]
+        if (delta === undefined) return
+
+        event.preventDefault()
+        const next = (index + delta + candidates.length) % candidates.length
+        const candidate = candidates[next]
+        setSelected(candidate)
+        optionRefs.current.get(candidate.id)?.focus()
+    }
+
     async function handleSubmit() {
-        setLoading(true)
+        setSubmitting(true)
         setError('')
         try {
             const res = await fetch('/api/vote', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ candidate_id: selectedCandidate.id }),
+                body: JSON.stringify({ candidate_id: selected.id }),
             })
             const data = await res.json()
-            if (!res.ok) {
-                if (res.status === 409 || res.status === 401) {
-                    // Voter has already voted, or their session expired after voting elsewhere.
-                    // Either way they must not be able to re-enter the voting flow.
-                    sessionStorage.removeItem('voter')
-                    setStep('already-voted')
-                } else {
-                    setError(data.error)
-                }
-            } else {
-                sessionStorage.removeItem('voter')
+
+            if (res.ok) {
+                clearVoter()
                 setStep('success')
+                return
             }
+
+            if (res.status === 409 || res.status === 401) {
+                // Either a ballot already exists for this voter, or the session
+                // expired. Both mean the flow must not be re-enterable.
+                clearVoter()
+                setStep('already-voted')
+                return
+            }
+
+            setError(data.error ?? 'We could not record your vote.')
         } catch {
-            setError('Something went wrong. Please try again.')
+            setError('We could not reach the server. Check your connection and try again.')
         } finally {
-            setLoading(false)
+            setSubmitting(false)
         }
     }
 
-    if (!voter) return null
+    // Nothing renders until the session check has run, so the ballot never
+    // flashes into view for someone about to be redirected away.
+    if (!checkedSession || !voter) return null
+
+    if (step === 'success') {
+        return (
+            <PageShell width="md">
+                <PageHeading
+                    title="Your vote has been recorded"
+                    description={`Thank you${voter.fullName ? `, ${voter.fullName}` : ''}. Your ballot in ${voter.constituencyName} has been counted.`}
+                />
+                <p className="mt-4 leading-relaxed text-muted-foreground">
+                    Nothing links your ballot to you, so it cannot be traced, changed or
+                    withdrawn. Results are published once voting closes nationwide.
+                </p>
+                <Button asChild variant="outline" size="lg" className="mt-8 w-full sm:w-auto">
+                    <Link href="/">Back to home</Link>
+                </Button>
+            </PageShell>
+        )
+    }
+
+    if (step === 'already-voted') {
+        return (
+            <PageShell width="sm">
+                <PageHeading
+                    title="You have already voted"
+                    description="A ballot has already been recorded for this registration, so you cannot vote again."
+                />
+                <Button asChild variant="outline" size="lg" className="mt-8 w-full sm:w-auto">
+                    <Link href="/">Back to home</Link>
+                </Button>
+            </PageShell>
+        )
+    }
+
+    if (step === 'confirm') {
+        return (
+            <PageShell width="md">
+                <PageHeading
+                    title="Check your ballot"
+                    description="Once you submit, this cannot be changed."
+                />
+
+                <Card className="mt-6">
+                    <CardContent className="space-y-5">
+                        <dl className="divide-y divide-border">
+                            <div className="flex items-baseline justify-between gap-4 pb-3">
+                                <dt className="text-sm text-muted-foreground">Constituency</dt>
+                                <dd className="text-right font-medium">
+                                    {voter.constituencyName}
+                                </dd>
+                            </div>
+                            <div className="flex items-baseline justify-between gap-4 pt-3">
+                                <dt className="text-sm text-muted-foreground">Your candidate</dt>
+                                <dd className="text-right text-lg font-semibold">
+                                    {selected?.full_name}
+                                </dd>
+                            </div>
+                        </dl>
+
+                        {error ? (
+                            <Alert variant="danger" title="Could not record your vote">
+                                {error}
+                            </Alert>
+                        ) : null}
+
+                        <div className="flex flex-col-reverse gap-3 sm:flex-row">
+                            <Button
+                                variant="outline"
+                                size="xl"
+                                className="sm:flex-1"
+                                onClick={() => {
+                                    setStep('select')
+                                    setError('')
+                                }}
+                                disabled={submitting}
+                            >
+                                Change my choice
+                            </Button>
+                            <Button
+                                size="xl"
+                                className="sm:flex-1"
+                                onClick={handleSubmit}
+                                disabled={submitting}
+                            >
+                                {submitting ? <Spinner /> : null}
+                                {submitting ? 'Submitting…' : 'Submit my vote'}
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <LiveRegion message={submitting ? 'Submitting your vote' : ''} assertive />
+            </PageShell>
+        )
+    }
 
     return (
-        <main className="min-h-screen bg-white flex flex-col items-center justify-center px-4 py-10">
-            <div className="max-w-4xl w-full space-y-6">
+        <PageShell width="lg">
+            <PageHeading
+                title="Choose your candidate"
+                description={`Select one candidate standing in ${voter.constituencyName}. Nobody, including election staff, can see who you choose.`}
+            />
 
-                {/* CANDIDATES */}
-                {step === 'candidates' && (
-                    <>
-                        <div>
-                            <h2 className="text-xl sm:text-2xl font-semibold text-black">Cast your vote</h2>
-                            <p className="text-zinc-500 text-sm sm:text-base mt-1">{voter.constituency_name}</p>
-                        </div>
+            {candidatesError ? (
+                <Alert variant="danger" title="Could not load candidates" className="mt-6">
+                    <p>{candidatesError}</p>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3"
+                        onClick={() => loadCandidates(voter.constituencyId)}
+                    >
+                        Try again
+                    </Button>
+                </Alert>
+            ) : null}
 
-                        <div className="flex gap-3 bg-zinc-50 border border-zinc-200 rounded-lg p-3 sm:p-4">
-                            <svg className="w-5 h-5 text-zinc-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                            <p className="text-sm text-zinc-500 leading-relaxed">
-                                Your selection is private. No one — including administrators — can see who you voted for.
-                            </p>
-                        </div>
+            {candidatesLoading ? (
+                <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {[0, 1, 2].map((i) => (
+                        <Skeleton key={i} className="h-64 rounded-xl" />
+                    ))}
+                </div>
+            ) : null}
 
-                        {candidatesError && <p className="text-base text-red-600" role="alert" aria-live="polite">{candidatesError}</p>}
+            {!candidatesLoading && !candidatesError && candidates.length === 0 ? (
+                <div className="mt-6 rounded-xl border border-border bg-card">
+                    <EmptyState
+                        title="No candidates yet"
+                        description={`No candidates have been confirmed for ${voter.constituencyName}. Check back once nominations close.`}
+                        action={
+                            <Button asChild variant="outline">
+                                <Link href="/">Back to home</Link>
+                            </Button>
+                        }
+                    />
+                </div>
+            ) : null}
 
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                            {candidatesLoading && (
-                                <>
-                                    <div className="h-32 sm:h-44 bg-zinc-100 rounded-xl animate-pulse" />
-                                    <div className="h-32 sm:h-44 bg-zinc-100 rounded-xl animate-pulse" />
-                                    <div className="h-32 sm:h-44 bg-zinc-100 rounded-xl animate-pulse" />
-                                </>
-                            )}
-                            {!candidatesLoading && candidates.length === 0 && (
-                                <p className="text-zinc-500 text-base col-span-full">No candidates found for this constituency.</p>
-                            )}
-                            {!candidatesLoading && candidates.map(candidate => (
+            {!candidatesLoading && candidates.length > 0 ? (
+                <>
+                    <div
+                        role="radiogroup"
+                        aria-label={`Candidates for ${voter.constituencyName}`}
+                        className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+                    >
+                        {candidates.map((candidate, index) => {
+                            const isSelected = selected?.id === candidate.id
+                            return (
                                 <button
                                     key={candidate.id}
-                                    onClick={() => setSelectedCandidate(prev => prev?.id === candidate.id ? null : candidate)}
-                                    className={`flex sm:flex-col flex-row items-center sm:items-stretch rounded-xl border overflow-hidden transition-all text-left ${
-                                        selectedCandidate?.id === candidate.id
-                                            ? 'border-black ring-2 ring-black'
-                                            : 'border-zinc-200 hover:border-zinc-400'
-                                    }`}
+                                    ref={(node) => {
+                                        if (node) optionRefs.current.set(candidate.id, node)
+                                        else optionRefs.current.delete(candidate.id)
+                                    }}
+                                    role="radio"
+                                    aria-checked={isSelected}
+                                    // Roving tabindex: one tab stop for the whole
+                                    // group, as the radio pattern requires.
+                                    tabIndex={isSelected || (!selected && index === 0) ? 0 : -1}
+                                    onKeyDown={(e) => handleKeyDown(e, index)}
+                                    onClick={() => setSelected(candidate)}
+                                    className={cn(
+                                        'flex flex-col overflow-hidden rounded-xl border bg-card text-left transition-colors',
+                                        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                                        isSelected
+                                            ? 'border-primary ring-1 ring-primary'
+                                            : 'border-border hover:border-border-strong'
+                                    )}
                                 >
-                                    <div className="relative w-24 h-24 sm:w-full sm:h-auto sm:aspect-[3/4] bg-white overflow-hidden flex-shrink-0">
+                                    <div className="relative aspect-4/3 w-full overflow-hidden bg-muted sm:aspect-3/4">
                                         {candidate.photo_url ? (
                                             <Image
                                                 src={candidate.photo_url}
-                                                alt={candidate.full_name}
+                                                alt=""
                                                 fill
-                                                sizes="(min-width: 640px) 33vw, 96px"
-                                                className="object-contain bg-white"
+                                                sizes="(min-width: 1024px) 300px, (min-width: 640px) 45vw, 90vw"
+                                                className="object-cover"
                                             />
                                         ) : (
-                                            <div className="w-full h-full flex items-end justify-center overflow-hidden">
-                                                <svg viewBox="0 0 100 110" className="w-4/5 text-zinc-300" fill="currentColor">
-                                                    <circle cx="50" cy="35" r="22" />
-                                                    <ellipse cx="50" cy="100" rx="38" ry="30" />
-                                                </svg>
-                                            </div>
+                                            <span
+                                                aria-hidden="true"
+                                                className="flex size-full items-center justify-center text-3xl font-semibold text-muted-foreground/40"
+                                            >
+                                                {candidate.full_name
+                                                    .split(' ')
+                                                    .slice(0, 2)
+                                                    .map((w) => w[0])
+                                                    .join('')}
+                                            </span>
                                         )}
                                     </div>
-                                    <div className="px-3 py-2.5 flex items-center justify-between flex-1 bg-white">
-                                        <span className="text-sm font-medium text-black leading-tight">{candidate.full_name}</span>
-                                        {selectedCandidate?.id === candidate.id && (
-                                            <div className="w-5 h-5 rounded-full bg-black flex items-center justify-center flex-shrink-0 ml-2">
-                                                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                                </svg>
-                                            </div>
-                                        )}
+
+                                    <div className="flex flex-1 items-center justify-between gap-3 p-4">
+                                        <span className="font-medium">{candidate.full_name}</span>
+                                        <span
+                                            aria-hidden="true"
+                                            className={cn(
+                                                'flex size-5 shrink-0 items-center justify-center rounded-full border',
+                                                isSelected
+                                                    ? 'border-primary bg-primary text-primary-foreground'
+                                                    : 'border-input'
+                                            )}
+                                        >
+                                            {isSelected ? <Check className="size-3" /> : null}
+                                        </span>
                                     </div>
                                 </button>
-                            ))}
-                        </div>
+                            )
+                        })}
+                    </div>
 
-                        <div className="flex gap-3">
+                    {/* A plain bar rather than a translucent blurred one. The
+                        content behind it is a ballot, and showing it smeared
+                        through a frosted panel is decoration on the one screen
+                        that should be unambiguous. */}
+                    <div className="sticky bottom-0 mt-8 -mx-4 border-t border-border bg-background px-4 py-4 sm:-mx-6 sm:px-6">
+                        <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-sm text-muted-foreground" aria-live="polite">
+                                {selected
+                                    ? `Selected: ${selected.full_name}`
+                                    : 'Select a candidate to continue'}
+                            </p>
                             <Button
-                                variant="outline"
-                                className="flex-1 h-11 text-base"
-                                onClick={() => router.push('/vote')}
-                            >
-                                Back
-                            </Button>
-                            <Button
-                                className="flex-1 h-11 text-base bg-black text-white hover:bg-zinc-800"
-                                disabled={!selectedCandidate}
+                                size="xl"
+                                className="w-full sm:w-auto"
+                                disabled={!selected}
                                 onClick={() => setStep('confirm')}
                             >
                                 Continue
                             </Button>
                         </div>
-                    </>
-                )}
-
-                {/* CONFIRM */}
-                {step === 'confirm' && (
-                    <Card className="border border-zinc-200 shadow-none">
-                        <CardContent className="p-4 sm:p-6 space-y-5">
-
-                            <div>
-                                <h2 className="text-xl sm:text-2xl font-semibold text-black">Review your ballot</h2>
-                                <p className="text-zinc-500 text-sm sm:text-base mt-1">Once submitted this cannot be changed.</p>
-                            </div>
-
-                            <div className="space-y-1 text-base">
-                                <div className="flex justify-between py-3 border-b border-zinc-100">
-                                    <span className="text-zinc-500">Constituency</span>
-                                    <span className="text-black font-medium text-right ml-4">{voter.constituency_name}</span>
-                                </div>
-                                <div className="flex justify-between py-3">
-                                    <span className="text-zinc-500">Candidate</span>
-                                    <span className="text-black font-medium text-right ml-4">{selectedCandidate?.full_name}</span>
-                                </div>
-                            </div>
-
-                            <div className="flex gap-3 bg-zinc-50 border border-zinc-200 rounded-lg p-3 sm:p-4">
-                                <svg className="w-5 h-5 text-[#006B3F] mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                                </svg>
-                                <p className="text-sm text-zinc-500 leading-relaxed">
-                                    Your vote is anonymous and securely recorded. Your identity will never be linked to your candidate choice.
-                                </p>
-                            </div>
-
-                            {error && <p className="text-base text-red-600" role="alert" aria-live="polite">{error}</p>}
-
-                            <div className="flex gap-3">
-                                <Button
-                                    variant="outline"
-                                    className="flex-1 h-11 text-base"
-                                    onClick={() => { setStep('candidates'); setError('') }}
-                                >
-                                    Back
-                                </Button>
-                                <Button
-                                    className="flex-1 h-11 text-base bg-[#006B3F] text-white hover:bg-[#005a34]"
-                                    onClick={handleSubmit}
-                                    disabled={loading}
-                                >
-                                    {loading ? 'Submitting...' : 'Submit vote'}
-                                </Button>
-                            </div>
-
-                        </CardContent>
-                    </Card>
-                )}
-
-                {/* SUCCESS */}
-                {step === 'success' && (
-                    <div className="text-center space-y-6">
-
-                        <div className="flex justify-center">
-                            <div className="h-2 w-16 sm:w-20 bg-[#CF0A0A]" />
-                            <div className="h-2 w-16 sm:w-20 bg-[#FCD20F]" />
-                            <div className="h-2 w-16 sm:w-20 bg-[#006B3F]" />
-                        </div>
-
-                        <div className="w-16 h-16 rounded-full bg-[#006B3F] flex items-center justify-center mx-auto">
-                            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                        </div>
-
-                        <div className="space-y-2">
-                            <h2 className="text-2xl font-semibold text-black">Your vote has been cast</h2>
-                            <p className="text-zinc-500 text-base leading-relaxed">
-                                Thank you, <span className="text-black font-medium">{voter.voter_name}</span>.
-                                Your vote in <span className="text-black font-medium">{voter.constituency_name}</span> has been securely recorded.
-                            </p>
-                        </div>
-
-                        <div className="bg-zinc-50 border border-zinc-200 rounded-lg p-4 sm:p-5 text-left space-y-3">
-                            <p className="text-sm font-medium text-zinc-700">What happens next</p>
-                            <ul className="text-sm text-zinc-500 space-y-2">
-                                <li>— Your ballot is stored securely</li>
-                                <li>— No one can see who you voted for</li>
-                                <li>— Results will be announced after voting closes</li>
-                            </ul>
-                        </div>
-
-                        <p className="text-sm text-zinc-500">You may now close this tab.</p>
-
                     </div>
-                )}
-
-                {/* ALREADY VOTED */}
-                {step === 'already-voted' && (
-                    <div className="text-center space-y-6">
-
-                        <div className="flex justify-center">
-                            <div className="h-2 w-16 sm:w-20 bg-[#CF0A0A]" />
-                            <div className="h-2 w-16 sm:w-20 bg-[#FCD20F]" />
-                            <div className="h-2 w-16 sm:w-20 bg-[#006B3F]" />
-                        </div>
-
-                        <div className="space-y-2">
-                            <h2 className="text-2xl font-semibold text-black">You have already voted</h2>
-                            <p className="text-zinc-500 text-base leading-relaxed">
-                                Our records show a vote has already been recorded for this voter. You cannot vote again.
-                            </p>
-                        </div>
-
-                        <Button
-                            className="w-full h-11 text-base"
-                            variant="outline"
-                            onClick={() => router.push('/')}
-                        >
-                            Back to home
-                        </Button>
-
-                    </div>
-                )}
-
-            </div>
-        </main>
+                </>
+            ) : null}
+        </PageShell>
     )
 }

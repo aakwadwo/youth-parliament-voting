@@ -1,111 +1,253 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { Search, RefreshCw } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Alert } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Stat, StatGrid, StatSkeleton } from '@/components/ui/stat'
+import { Skeleton, EmptyState, VoteBar } from '@/components/ui/feedback'
+import { SectionHeader } from '@/components/admin/SectionHeader'
 import { useFetch } from '@/lib/useFetch'
 
+const nf = new Intl.NumberFormat('en-GB')
+
 export default function Results() {
-    const { data: results, loading, error } = useFetch('/api/admin/results', {
-        initialData: [],
-        errorMessage: 'Could not load results. Please refresh the page.',
+    const { data, loading, error, reload } = useFetch('/api/admin/results', {
+        errorMessage: 'Could not load results.',
     })
-    const [exportError, setExportError] = useState('')
+
     const [search, setSearch] = useState('')
+    const [regionFilter, setRegionFilter] = useState('all')
 
-    async function handleExport() {
-        setExportError('')
-        try {
-            const res = await fetch('/api/admin/results/export')
-            if (!res.ok) throw new Error()
-            const blob = await res.blob()
-            const url = URL.createObjectURL(blob)
-            const a = document.createElement('a')
-            a.href = url
-            a.download = 'results.csv'
-            a.click()
-            URL.revokeObjectURL(url)
-        } catch {
-            setExportError('Could not export results. Please try again.')
-        }
-    }
+    // Memoised so the empty-array fallback is not a fresh identity on every
+    // render, which would defeat the memoisation of everything derived from it.
+    const constituencies = useMemo(() => data?.constituencies ?? [], [data])
+    const summary = data?.summary
 
-    const filtered = results.filter(r =>
-        r.constituency_name.toLowerCase().includes(search.toLowerCase())
+    const regions = useMemo(
+        () => [...new Set(constituencies.map((c) => c.region).filter(Boolean))].sort(),
+        [constituencies]
     )
+
+    const filtered = useMemo(() => {
+        const term = search.trim().toLowerCase()
+        return constituencies.filter((c) => {
+            if (regionFilter !== 'all' && c.region !== regionFilter) return false
+            if (!term) return true
+            return (
+                c.name.toLowerCase().includes(term) ||
+                (c.region ?? '').toLowerCase().includes(term) ||
+                c.candidates.some((cand) => cand.name.toLowerCase().includes(term))
+            )
+        })
+    }, [constituencies, search, regionFilter])
+
+    if (error) {
+        return (
+            <div className="space-y-6">
+                <SectionHeader title="Results" />
+                <Alert variant="danger" title="Could not load results">
+                    <p>{error}</p>
+                    <Button variant="outline" size="sm" className="mt-3" onClick={reload}>
+                        <RefreshCw aria-hidden="true" />
+                        Try again
+                    </Button>
+                </Alert>
+            </div>
+        )
+    }
 
     return (
         <div className="space-y-6">
-
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-semibold text-black">Results</h1>
-                    <p className="text-zinc-500 text-sm mt-1">Votes per candidate per constituency</p>
-                </div>
-                <Button
-                    variant="outline"
-                    className="text-sm"
-                    onClick={handleExport}
-                >
-                    Export CSV
-                </Button>
-            </div>
-
-            {error && <p className="text-sm text-red-600" role="alert" aria-live="polite">{error}</p>}
-            {exportError && <p className="text-sm text-red-600" role="alert" aria-live="polite">{exportError}</p>}
-
-            <input
-                placeholder="Search constituency..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="h-10 max-w-sm w-full border border-zinc-200 rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+            <SectionHeader
+                title="Results"
+                description="Live tallies per candidate, per constituency"
+                actions={
+                    <Button variant="outline" size="sm" onClick={reload} disabled={loading}>
+                        <RefreshCw aria-hidden="true" />
+                        Refresh
+                    </Button>
+                }
             />
 
-            {loading && (
-                <div className="space-y-3">
-                    {[1,2,3].map(i => (
-                        <div key={i} className="h-24 bg-zinc-100 rounded-xl animate-pulse" />
-                    ))}
-                </div>
-            )}
-
-            {!loading && filtered.length === 0 && (
-                <div className="bg-white border border-zinc-200 rounded-xl px-5 py-12 text-center">
-                    <p className="text-zinc-500 text-sm">No results found</p>
-                </div>
-            )}
-
-            {!loading && filtered.map(constituency => (
-                <div key={constituency.constituency_id} className="bg-white border border-zinc-200 rounded-xl overflow-hidden">
-                    <div className="px-5 py-4 border-b border-zinc-100 flex items-center justify-between">
-                        <div>
-                            <p className="font-medium text-black">{constituency.constituency_name}</p>
-                            <p className="text-xs text-zinc-500 mt-0.5">{constituency.total_votes} vote{constituency.total_votes !== 1 ? 's' : ''}</p>
-                        </div>
+            {loading && !data ? (
+                <>
+                    <StatGrid cols={3}>
+                        {[0, 1, 2].map((i) => (
+                            <StatSkeleton key={i} />
+                        ))}
+                    </StatGrid>
+                    <div className="space-y-3">
+                        {[0, 1, 2].map((i) => (
+                            <Skeleton key={i} className="h-40 w-full rounded-xl" />
+                        ))}
                     </div>
-                    <div className="divide-y divide-zinc-50">
-                        {constituency.candidates.map((candidate, i) => {
-                            const pct = constituency.total_votes > 0
-                                ? Math.round((candidate.votes / constituency.total_votes) * 100)
-                                : 0
-                            return (
-                                <div key={i} className="px-5 py-3 space-y-1.5">
-                                    <div className="flex items-center justify-between text-sm">
-                                        <span className="font-medium text-black">{candidate.name}</span>
-                                        <span className="text-zinc-500">{candidate.votes} vote{candidate.votes !== 1 ? 's' : ''} · {pct}%</span>
-                                    </div>
-                                    <div className="w-full h-1.5 bg-zinc-100 rounded-full overflow-hidden">
-                                        <div
-                                            className="h-full bg-black rounded-full transition-all"
-                                            style={{ width: `${pct}%` }}
-                                        />
-                                    </div>
+                </>
+            ) : null}
+
+            {summary ? (
+                <StatGrid cols={3}>
+                    <Stat label="Ballots counted" value={nf.format(summary.totalBallots)} />
+                    <Stat label="Turnout" value={`${summary.turnoutPct}%`} />
+                    <Stat
+                        label="Constituencies declared"
+                        value={`${summary.declaredConstituencies} of ${summary.totalConstituencies}`}
+                    />
+                </StatGrid>
+            ) : null}
+
+            {data ? (
+                <div className="flex flex-col gap-3 sm:flex-row">
+                    <div className="relative flex-1 sm:max-w-sm">
+                        <Search
+                            aria-hidden="true"
+                            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                        />
+                        <Input
+                            type="search"
+                            className="pl-9"
+                            placeholder="Search constituency or candidate"
+                            aria-label="Search results"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                        />
+                    </div>
+                    <div className="sm:w-56">
+                        <label htmlFor="results-region" className="sr-only">
+                            Filter by region
+                        </label>
+                        <select
+                            id="results-region"
+                            value={regionFilter}
+                            onChange={(e) => setRegionFilter(e.target.value)}
+                            className="h-10 w-full rounded-lg border border-input bg-background px-3 text-base focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none md:text-sm"
+                        >
+                            <option value="all">All regions</option>
+                            {regions.map((r) => (
+                                <option key={r} value={r}>
+                                    {r}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+            ) : null}
+
+            {data && filtered.length === 0 ? (
+                <div className="rounded-xl border border-border bg-card">
+                    <EmptyState
+                        title={
+                            constituencies.length === 0
+                                ? 'No results yet'
+                                : 'Nothing matches those filters'
+                        }
+                        description={
+                            constituencies.length === 0
+                                ? 'Results appear here once constituencies and candidates have been set up and voting has begun.'
+                                : 'Try a different search term or region.'
+                        }
+                        action={
+                            constituencies.length > 0 ? (
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setSearch('')
+                                        setRegionFilter('all')
+                                    }}
+                                >
+                                    Clear filters
+                                </Button>
+                            ) : null
+                        }
+                    />
+                </div>
+            ) : null}
+
+            <div className="space-y-4">
+                {filtered.map((constituency) => {
+                    const winnerIds = new Set(constituency.winners.map((w) => w.id))
+                    const tied = constituency.winners.length > 1
+                    const leadingVotes = constituency.candidates[0]?.votes ?? 0
+
+                    return (
+                        <section
+                            key={constituency.id}
+                            aria-labelledby={`c-${constituency.id}`}
+                            className="overflow-hidden rounded-xl border border-border bg-card"
+                        >
+                            <div className="flex flex-col gap-2 border-b border-border px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
+                                <div className="min-w-0">
+                                    <h2
+                                        id={`c-${constituency.id}`}
+                                        className="truncate font-semibold"
+                                    >
+                                        {constituency.name}
+                                    </h2>
+                                    <p className="mt-0.5 text-sm text-muted-foreground">
+                                        {constituency.region ?? 'Region not set'} ·{' '}
+                                        <span className="numeric">
+                                            {nf.format(constituency.totalVotes)}
+                                        </span>{' '}
+                                        {constituency.totalVotes === 1 ? 'ballot' : 'ballots'} ·{' '}
+                                        <span className="numeric">{constituency.turnoutPct}%</span>{' '}
+                                        turnout
+                                    </p>
                                 </div>
-                            )
-                        })}
-                    </div>
-                </div>
-            ))}
+                                {constituency.totalVotes === 0 ? (
+                                    <Badge variant="warning">No ballots cast</Badge>
+                                ) : tied ? (
+                                    <Badge variant="warning">                                        Tied
+                                    </Badge>
+                                ) : (
+                                    <Badge variant="success">                                        Declared
+                                    </Badge>
+                                )}
+                            </div>
 
+                            <ul className="divide-y divide-border">
+                                {constituency.candidates.map((candidate) => {
+                                    const isWinner = winnerIds.has(candidate.id)
+                                    return (
+                                        <li key={candidate.id} className="px-4 py-3.5 sm:px-5">
+                                            <div className="flex items-baseline justify-between gap-3">
+                                                <span className="flex min-w-0 items-center gap-2">
+                                                    <span
+                                                        className={`truncate ${isWinner ? 'font-semibold' : 'font-medium'}`}
+                                                    >
+                                                        {candidate.name}
+                                                    </span>
+                                                    {isWinner ? (
+                                                        <Badge variant="success">
+                                                            {tied ? 'Tied' : 'Elected'}
+                                                        </Badge>
+                                                    ) : null}
+                                                    {!candidate.isActive ? (
+                                                        <Badge variant="neutral">Withdrawn</Badge>
+                                                    ) : null}
+                                                </span>
+                                                <span className="numeric shrink-0 text-sm text-muted-foreground">
+                                                    {nf.format(candidate.votes)} ·{' '}
+                                                    {candidate.sharePct}%
+                                                </span>
+                                            </div>
+                                            <VoteBar
+                                                className="mt-2"
+                                                value={candidate.votes}
+                                                max={Math.max(1, leadingVotes)}
+                                                tone={isWinner ? 'brand' : 'muted'}
+                                                label={`${candidate.name}: ${candidate.votes} votes, ${candidate.sharePct}% of ballots in ${constituency.name}`}
+                                            />
+                                        </li>
+                                    )
+                                })}
+                            </ul>
+                        </section>
+                    )
+                })}
+            </div>
         </div>
     )
 }
