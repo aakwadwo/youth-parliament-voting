@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 
-import { createAdminClient } from '@/lib/supabase-admin'
 import { dbError } from '@/lib/api-error'
-import { ELECTION_NAME } from '@/lib/election'
+import { readElection } from '@/lib/election-server'
 
 /**
  * Public election status.
@@ -13,45 +12,24 @@ import { ELECTION_NAME } from '@/lib/election'
  * in the whole flow. This endpoint lets every screen state the position up
  * front.
  *
- * It deliberately exposes only what a voter needs: the election's name and
- * window, and whether it is open right now. No counts, no results, nothing
- * that could influence a vote in progress.
+ * The derivation now lives in `@/lib/election-status` and is shared with the
+ * gates on the voting routes, so what a voter is told here and what they are
+ * actually allowed to do cannot drift apart.
+ *
+ * It deliberately exposes only what a voter needs: the election's name,
+ * description and window, and whether it is open right now. No counts, no
+ * results, nothing that could influence a vote in progress.
  */
 export async function GET() {
-    const supabase = createAdminClient()
-
-    const { data, error } = await supabase
-        .from('election_settings')
-        .select('election_name, is_active, voting_opens_at, voting_closes_at')
-        .maybeSingle()
+    const { election, error } = await readElection()
 
     if (error) return dbError(error, 'Could not load election status.')
 
-    const now = Date.now()
-    const opensAt = data?.voting_opens_at ? new Date(data.voting_opens_at).getTime() : null
-    const closesAt = data?.voting_closes_at ? new Date(data.voting_closes_at).getTime() : null
-
-    let status = 'closed'
-    if (data?.is_active) {
-        if (opensAt && opensAt > now) status = 'scheduled'
-        else if (closesAt && closesAt < now) status = 'ended'
-        else status = 'open'
-    }
-
-    return NextResponse.json(
-        {
-            electionName: data?.election_name ?? ELECTION_NAME,
-            status,
-            isOpen: status === 'open',
-            opensAt: data?.voting_opens_at ?? null,
-            closesAt: data?.voting_closes_at ?? null,
+    return NextResponse.json(election, {
+        // Short enough that opening the poll is reflected almost at once,
+        // long enough to absorb the traffic spike when it does.
+        headers: {
+            'Cache-Control': 'public, max-age=15, s-maxage=15, stale-while-revalidate=45',
         },
-        {
-            // Short enough that opening the poll is reflected almost at once,
-            // long enough to absorb the traffic spike when it does.
-            headers: {
-                'Cache-Control': 'public, max-age=15, s-maxage=15, stale-while-revalidate=45',
-            },
-        }
-    )
+    })
 }

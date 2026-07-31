@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -9,10 +9,17 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Field } from '@/components/ui/field'
 import { Alert, LiveRegion } from '@/components/ui/alert'
-import { Spinner } from '@/components/ui/feedback'
 import { ConstituencyCombobox } from '@/components/ConstituencyCombobox'
 import { PageShell, PageHeading } from '@/components/layout/PageShell'
-import { storeVoter } from '@/lib/voter-client'
+import { clearVoter } from '@/lib/voter-client'
+import { getJson, postJson } from '@/lib/api-client'
+import {
+    ELECTION_STATUS,
+    isVotingOpen,
+    formatDateLong,
+    formatDateTimeLong,
+} from '@/lib/election-status'
+import { ELECTORAL_COMMISSION } from '@/lib/election'
 import {
     isValidName,
     isValidGhanaPhone,
@@ -65,6 +72,9 @@ export default function RegisterPage() {
     const [constituenciesError, setConstituenciesError] = useState('')
     const [submitError, setSubmitError] = useState('')
     const [submitting, setSubmitting] = useState(false)
+    // Guards the window between the first click and the re-render that disables
+    // the button; see handleSubmit.
+    const inFlight = useRef(false)
     const [registered, setRegistered] = useState(null)
 
     const bounds = dobBounds()
@@ -72,21 +82,34 @@ export default function RegisterPage() {
     const loadConstituencies = useCallback(async () => {
         setConstituenciesLoading(true)
         setConstituenciesError('')
-        try {
-            const res = await fetch('/api/constituencies')
-            if (!res.ok) throw new Error('failed')
-            setConstituencies(await res.json())
-        } catch {
-            setConstituenciesError(
-                'We could not load the list of constituencies. Check your connection and try again.'
-            )
-        } finally {
+
+        const result = await getJson('/api/constituencies')
+
+        if (result.aborted) return
+
+        if (!result.ok) {
+            // Only a genuine unreachable server tells the voter to check their
+            // connection; a 500 here is ours, and saying otherwise sends them
+            // to restart a router that was working.
+            setConstituenciesError(result.error)
             setConstituenciesLoading(false)
+            return
         }
+
+        setConstituencies(Array.isArray(result.data) ? result.data : [])
+        setConstituenciesLoading(false)
     }, [])
 
     useEffect(() => {
-        loadConstituencies()
+        // Called through an async wrapper rather than directly. The only state
+        // this touches before its first await is the loading flag, which on
+        // mount is already `true` — so there is no render to cascade into, and
+        // this is the shape react-hooks/set-state-in-effect accepts for
+        // fetch-on-mount.
+        async function loadNow() {
+            await loadConstituencies()
+        }
+        loadNow()
     }, [loadConstituencies])
 
     function update(key, value) {
@@ -106,6 +129,11 @@ export default function RegisterPage() {
     async function handleSubmit(event) {
         event.preventDefault()
 
+        // A disabled button stops the second click, but only once React has
+        // re-rendered. Two taps inside that window would otherwise fire this
+        // handler twice and race two registrations for the same phone number.
+        if (inFlight.current) return
+
         const nextErrors = {}
         for (const key of FIELD_ORDER) {
             const message = VALIDATORS[key](form[key])
@@ -123,66 +151,47 @@ export default function RegisterPage() {
             return
         }
 
+        inFlight.current = true
         setSubmitting(true)
         setSubmitError('')
 
-        try {
-            const res = await fetch('/api/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    full_name: form.full_name,
-                    voter_dob: form.voter_dob,
-                    voter_phone: normalisePhone(form.voter_phone),
-                    constituency_id: form.constituency_id,
-                }),
-            })
-            const data = await res.json()
+        const result = await postJson('/api/register', {
+            full_name: form.full_name,
+            voter_dob: form.voter_dob,
+            voter_phone: normalisePhone(form.voter_phone),
+            constituency_id: form.constituency_id,
+        })
 
-            if (!res.ok) {
-                setSubmitError(data.error ?? 'We could not complete your registration.')
-                return
-            }
+        inFlight.current = false
+        setSubmitting(false)
 
-            storeVoter(data.voter)
-            setRegistered(data.voter)
-        } catch {
-            setSubmitError('We could not reach the server. Check your connection and try again.')
-        } finally {
-            setSubmitting(false)
+        if (!result.ok) {
+            // `result.error` is the server's own sentence where it gave one and
+            // a status-appropriate sentence where it did not. Neither can be a
+            // connection message unless the request genuinely never landed.
+            setSubmitError(result.error)
+            return
         }
+
+        // The election state travelled back with the registration, so the
+        // confirmation screen renders from the same read the server made rather
+        // than a second request that could disagree with it.
+        const election = result.data.election ?? null
+
+        // Nothing about this voter is kept in browser storage: the ballot reads
+        // them from the session cookie server-side. This only clears anything
+        // an earlier deployment left behind.
+        clearVoter()
+
+        setRegistered({ voter: result.data.voter, election })
     }
 
     if (registered) {
-        return (
-            <PageShell width="md">
-                <PageHeading
-                    title="You are registered"
-                    description={`${registered.full_name}, you are registered to vote in ${registered.constituency_name}.`}
-                />
-
-                <div className="mt-8 rounded-xl border border-border bg-surface p-4 sm:p-5">
-                    <h2 className="font-semibold">What happens on the ballot</h2>
-                    <ol className="mt-3 space-y-2 text-sm leading-relaxed text-muted-foreground">
-                        <li>1. You see every candidate standing in your constituency.</li>
-                        <li>2. You select one, then review your choice.</li>
-                        <li>3. Once you submit, your ballot cannot be changed.</li>
-                    </ol>
-                </div>
-
-                <Button
-                    size="xl"
-                    className="mt-6 w-full sm:w-auto"
-                    onClick={() => router.push('/vote/candidates')}
-                >
-                    Continue to your ballot
-                </Button>
-            </PageShell>
-        )
+        return <RegistrationComplete {...registered} onContinue={() => router.push('/vote/candidates')} />
     }
 
     return (
-        <PageShell width="md">
+        <PageShell width="md" credit={false}>
             <PageHeading
                 title="Register to vote"
                 description={`Open to Ghanaians aged ${MIN_AGE} to ${MAX_AGE}.`}
@@ -306,9 +315,14 @@ export default function RegisterPage() {
                         ) : null}
 
                         <div className="space-y-3 pt-1">
-                            <Button type="submit" size="xl" className="w-full" disabled={submitting}>
-                                {submitting ? <Spinner /> : null}
-                                {submitting ? 'Registering…' : 'Register to vote'}
+                            <Button
+                                type="submit"
+                                size="xl"
+                                className="w-full"
+                                pending={submitting}
+                                pendingLabel="Registering…"
+                            >
+                                Register to vote
                             </Button>
                             <p className="text-xs leading-relaxed text-muted-foreground">
                                 By registering you confirm that you are a Ghanaian citizen aged{' '}
@@ -339,5 +353,146 @@ export default function RegisterPage() {
 
             <LiveRegion message={submitting ? 'Submitting your registration' : ''} />
         </PageShell>
+    )
+}
+
+/**
+ * What a voter is told once they are on the register.
+ *
+ * This screen used to assume one thing: that registering is immediately
+ * followed by voting. That is only true while the poll is open. Registering a
+ * fortnight early ended with a "Continue to your ballot" button that led to a
+ * ballot which could not be submitted, and registering after the close led to
+ * the same dead end. The registration is complete and worth confirming in all
+ * three cases — what changes is what comes next.
+ *
+ * The election state is whatever the API returned alongside the registration.
+ * When it is missing — the settings read failed, but the voter is on the
+ * register regardless — the screen falls back to the previous behaviour and
+ * offers the ballot, which the ballot route will then gate properly. Better to
+ * send a voter to a screen that can explain itself than to withhold the ballot
+ * from someone entitled to it on the strength of a failed lookup.
+ */
+function RegistrationComplete({ voter, election, onContinue }) {
+    const status = election?.status
+    const votingOpen = !election || isVotingOpen(status)
+    const ended = status === ELECTION_STATUS.ENDED
+
+    return (
+        <PageShell width="md" credit={false}>
+            <PageHeading
+                title={
+                    votingOpen
+                        ? 'You are registered'
+                        : ended
+                          ? 'Registration is complete'
+                          : 'Registration successful'
+                }
+                description={
+                    votingOpen
+                        ? 'Your voter registration has been recorded.'
+                        : ended
+                          ? 'Voting has ended for this election.'
+                          : 'Your voter registration has been recorded. Voting will open during the scheduled election period.'
+                }
+            />
+
+            <RegistrationReceipt voter={voter} />
+
+            <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+                If any information is incorrect, contact the {ELECTORAL_COMMISSION}
+                {ended ? '.' : ' before voting opens.'}
+            </p>
+
+            {/* The opening time comes from the admin settings row that travelled
+                back with the registration, never from a constant here. Once the
+                poll is open the useful fact is when it shuts instead. */}
+            {votingOpen && election?.closesAt ? (
+                <p className="mt-4 font-medium">
+                    Voting closes on {formatDateTimeLong(election.closesAt, { separator: ' at ' })}.
+                </p>
+            ) : null}
+            {!votingOpen && !ended && election?.opensAt ? (
+                <p className="mt-4 font-medium">
+                    Voting opens on {formatDateTimeLong(election.opensAt, { separator: ' at ' })}.
+                </p>
+            ) : null}
+
+            {votingOpen ? (
+                <>
+                    <div className="mt-8 rounded-xl border border-border bg-surface p-4 sm:p-5">
+                        <h2 className="font-semibold">What happens on the ballot</h2>
+                        <ol className="mt-3 space-y-2 text-sm leading-relaxed text-muted-foreground">
+                            <li>1. You see every candidate standing in your constituency.</li>
+                            <li>2. You select one, then review your choice.</li>
+                            <li>3. Once you submit, your ballot cannot be changed.</li>
+                        </ol>
+                    </div>
+
+                    <Button size="xl" className="mt-6 w-full sm:w-auto" onClick={onContinue}>
+                        Continue to your ballot
+                    </Button>
+                </>
+            ) : (
+                /* Deliberately no route into the ballot. Offering one here would
+                   be offering a door that the ballot route will refuse, which
+                   reads as a broken service rather than a closed poll. */
+                <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                    <Button asChild size="lg" className="sm:w-auto">
+                        <Link href="/">Return home</Link>
+                    </Button>
+                    <Button asChild variant="outline" size="lg" className="sm:w-auto">
+                        <Link href="/election">View election details</Link>
+                    </Button>
+                </div>
+            )}
+        </PageShell>
+    )
+}
+
+/**
+ * The receipt: exactly what was written to the register, for the voter to check.
+ *
+ * Worth the space because date of birth is half the credential. A voter who
+ * mistypes it is not merely holding a wrong record — they can never sign in,
+ * and under the current design they would not discover that until polling day,
+ * when nothing can be done about it. Showing the stored value in words ("14
+ * March 2004", never "14/03/2004", which is the same eight characters as an
+ * American reading of a different day) turns a silent lockout into something
+ * caught while the voter is still on the page.
+ *
+ * No internal identifiers appear here, and none are sent to the browser.
+ *
+ * Rows wrap rather than truncate: a long name or constituency drops onto its
+ * own line instead of being clipped or pushing the page sideways, which is what
+ * keeps this readable down to a 320px viewport.
+ */
+function RegistrationReceipt({ voter }) {
+    const rows = [
+        ['Name', voter.full_name],
+        ['Constituency', voter.constituency_name],
+        ['Date of birth', formatDateLong(voter.voter_dob)],
+        ['Registered', formatDateTimeLong(voter.registered_at)],
+    ].filter(([, value]) => value)
+
+    return (
+        <div className="mt-8 rounded-xl border border-border bg-surface px-4 py-1 sm:px-5">
+            <p className="pt-3 text-sm text-muted-foreground">
+                Please verify that the information below is correct.
+            </p>
+            <dl className="mt-1 divide-y divide-border">
+                {rows.map(([label, value]) => (
+                    <div
+                        key={label}
+                        className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 py-3"
+                    >
+                        <dt className="text-sm text-muted-foreground">{label}</dt>
+                        <dd className="min-w-0 font-medium [overflow-wrap:anywhere] sm:text-right">
+                            {value}
+                        </dd>
+                    </div>
+                ))}
+            </dl>
+        </div>
     )
 }

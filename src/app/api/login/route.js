@@ -5,11 +5,18 @@ import { signVoterToken, setVoterCookie } from '@/lib/voter-session'
 import { isValidGhanaPhone, isValidDateString } from '@/lib/validation'
 import { rateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { getClientIp, requireSameOrigin, noStore, rateLimitRefusal } from '@/lib/http'
-import { jsonError } from '@/lib/api-error'
+import { jsonError, ERROR_CODES } from '@/lib/api-error'
+import { requireVotingOpen } from '@/lib/election-server'
 
 // One message for "no such phone number" and for "wrong date of birth". Two
 // distinct messages would turn this endpoint into an oracle for checking
 // whether a given Ghanaian mobile number is registered to vote.
+//
+// Returned as 401 rather than the 404 this used to send. A 404 says "that URL
+// does not exist", which is not what happened: the endpoint exists and it
+// rejected the credentials presented. Anything sitting in front of the app —
+// a CDN, a monitor, an error budget — reads 404 as a routing fault and 401 as
+// a failed authentication, and only one of those is true here.
 const NOT_FOUND = 'We could not find a registration with those details. Please check and try again.'
 
 export async function POST(request) {
@@ -22,23 +29,35 @@ export async function POST(request) {
         return rateLimitRefusal(ipLimit, 'Too many attempts. Please try again later.')
     }
 
+    // Signing in exists only to reach the ballot, so it is gated on the poll
+    // being open. Two reasons beyond consistency with the rest of the flow:
+    // a voter session issued outside the voting window is a credential with
+    // nothing to authorise, and this endpoint is the platform's only oracle
+    // for "is this phone number registered" — leaving it answering around the
+    // clock widens the window for the enumeration the per-phone limit exists
+    // to slow down.
+    const { response: refusal } = await requireVotingOpen()
+    if (refusal) return refusal
+
     let body
     try {
         body = await request.json()
     } catch {
-        return noStore(jsonError('Invalid request body', 400))
+        return noStore(jsonError('Invalid request body', 400, ERROR_CODES.INVALID_BODY))
     }
 
     const { voter_phone, voter_dob } = body ?? {}
 
     if (!voter_phone || !voter_dob) {
-        return noStore(jsonError('Phone number and date of birth are required.', 400))
+        return noStore(
+            jsonError('Phone number and date of birth are required.', 400, ERROR_CODES.MISSING_FIELDS)
+        )
     }
 
     const phone = typeof voter_phone === 'string' ? voter_phone.replace(/[\s-]/g, '') : ''
 
     if (!isValidGhanaPhone(phone) || !isValidDateString(voter_dob)) {
-        return noStore(jsonError(NOT_FOUND, 404))
+        return noStore(jsonError(NOT_FOUND, 401, ERROR_CODES.INVALID_CREDENTIALS))
     }
 
     // The limit that actually matters. A date of birth inside the 18-35
@@ -63,7 +82,7 @@ export async function POST(request) {
         .maybeSingle()
 
     if (error || !voter) {
-        return noStore(jsonError(NOT_FOUND, 404))
+        return noStore(jsonError(NOT_FOUND, 401, ERROR_CODES.INVALID_CREDENTIALS))
     }
 
     const voterPayload = {

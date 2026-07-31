@@ -1,14 +1,35 @@
-import { createAdminClient } from '@/lib/supabase-admin'
-import { isUUID } from '@/lib/validation'
-import { jsonError, dbError } from '@/lib/api-error'
 import { NextResponse } from 'next/server'
 
+import { createAdminClient } from '@/lib/supabase-admin'
+import { isUUID } from '@/lib/validation'
+import { jsonError, dbError, ERROR_CODES } from '@/lib/api-error'
+import { requireVotingOpen } from '@/lib/election-server'
+import { noStore } from '@/lib/http'
+
+/**
+ * The candidates standing in one constituency.
+ *
+ * Gated on the election being open. Who is standing is not secret in
+ * principle, but publishing the field before the poll opens turns this
+ * endpoint into an early-release channel for a list the Commission has not
+ * announced yet. Hiding the list in the UI while leaving this route open would
+ * mean the restriction lasted exactly as long as it took someone to open the
+ * network tab.
+ *
+ * The gate runs before the constituency id is validated, so a refusal never
+ * depends on whether the caller happened to guess a real constituency.
+ */
 export async function GET(request) {
+    const { response: refusal } = await requireVotingOpen()
+    if (refusal) return refusal
+
     const { searchParams } = new URL(request.url)
     const constituencyId = searchParams.get('constituency_id')
 
     if (!isUUID(constituencyId)) {
-        return jsonError('A valid constituency_id is required', 400)
+        return noStore(
+            jsonError('A valid constituency_id is required', 400, ERROR_CODES.VALIDATION_FAILED)
+        )
     }
 
     const supabase = createAdminClient()
@@ -23,6 +44,9 @@ export async function GET(request) {
     if (error) return dbError(error, 'Could not load candidates.')
 
     return NextResponse.json(data, {
-        headers: { 'Cache-Control': 'public, max-age=300, stale-while-revalidate=60' },
+        // Shorter than the five minutes this used to carry: the list is only
+        // served while the poll is open, so a cached copy must not outlive the
+        // poll closing by much.
+        headers: { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=30' },
     })
 }

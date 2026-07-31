@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { jsonError } from '@/lib/api-error'
+import { jsonError, ERROR_CODES } from '@/lib/api-error'
 
 /**
  * The client's IP address, for rate limiting.
@@ -60,13 +60,13 @@ export function requireSameOrigin(request) {
     try {
         originHost = new URL(origin).host
     } catch {
-        return jsonError('Invalid origin', 403)
+        return jsonError('Invalid origin', 403, ERROR_CODES.FORBIDDEN)
     }
 
     const expected = request.headers.get('x-forwarded-host') ?? request.headers.get('host')
 
     if (!expected || originHost !== expected) {
-        return jsonError('Cross-origin request rejected', 403)
+        return jsonError('Cross-origin request rejected', 403, ERROR_CODES.FORBIDDEN)
     }
 
     return null
@@ -114,14 +114,15 @@ export function jsonNoStore(body, init) {
 export function rateLimitRefusal(limit, throttledMessage) {
     if (limit.unavailable) {
         const response = jsonError(
-            'Sign-in is temporarily unavailable. Please contact the Electoral Commission.',
-            503
+            'This service is temporarily unavailable. Please try again shortly.',
+            503,
+            ERROR_CODES.UNAVAILABLE
         )
         response.headers.set('Retry-After', String(limit.retryAfterSeconds ?? 30))
         return noStore(response)
     }
 
-    const response = jsonError(throttledMessage, 429)
+    const response = jsonError(throttledMessage, 429, ERROR_CODES.RATE_LIMITED)
     if (limit.retryAfterSeconds) {
         response.headers.set('Retry-After', String(limit.retryAfterSeconds))
     }

@@ -1,6 +1,7 @@
 import * as React from "react"
 import { cva } from "class-variance-authority";
 import { Slot } from "radix-ui"
+import { Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -41,15 +42,43 @@ const buttonVariants = cva(
   }
 )
 
+/**
+ * `pending` is the one loading treatment used across the whole platform.
+ *
+ * Every asynchronous action previously hand-assembled its own — a `disabled`
+ * prop here, a `<Spinner />` there, a ternary on the label somewhere else — so
+ * some buttons spun, some only greyed out, and a few gave no feedback at all
+ * while a request was in flight. Putting it on the primitive means an action
+ * cannot be wired up without also getting the disabled state, the spinner and
+ * the assistive-technology announcement.
+ *
+ * `aria-busy` plus `disabled` is what actually prevents the double submission:
+ * a disabled button emits no further click events, so a voter jabbing "Submit
+ * my vote" on a slow connection cannot queue two ballots.
+ */
 function Button({
   className,
   variant = "default",
   size = "default",
   asChild = false,
   type,
+  pending = false,
+  pendingLabel,
+  disabled,
+  children,
   ...props
 }) {
   const Comp = asChild ? Slot.Root : "button"
+
+  // asChild hands rendering to the child element (a <Link>, usually), and Slot
+  // accepts exactly one child — so the spinner is only ever injected for real
+  // buttons. Navigation links do not have a pending state to show anyway.
+  const content = asChild ? children : (
+    <>
+      {pending ? <Loader2 aria-hidden="true" className="size-4 shrink-0 animate-spin" /> : null}
+      {pending && pendingLabel ? pendingLabel : children}
+    </>
+  )
 
   return (
     <Comp
@@ -60,8 +89,12 @@ function Button({
       // "button" means secondary actions (Back, Cancel) can never accidentally
       // submit a registration or a ballot.
       type={asChild ? undefined : (type ?? "button")}
+      disabled={asChild ? undefined : (disabled || pending)}
+      aria-busy={pending || undefined}
       className={cn(buttonVariants({ variant, size, className }))}
-      {...props} />
+      {...props}>
+      {content}
+    </Comp>
   );
 }
 

@@ -66,8 +66,8 @@ export default function Results() {
                 title="Results"
                 description="Live tallies per candidate, per constituency"
                 actions={
-                    <Button variant="outline" size="sm" onClick={reload} disabled={loading}>
-                        <RefreshCw aria-hidden="true" />
+                    <Button variant="outline" size="sm" onClick={reload} pending={loading}>
+                        {loading ? null : <RefreshCw aria-hidden="true" />}
                         Refresh
                     </Button>
                 }

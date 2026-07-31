@@ -6,14 +6,28 @@ import { SiteHeader, SiteFooter } from '@/components/layout/PageShell'
 import { ElectionStatusPanel } from '@/components/ElectionStatusBanner'
 import { MIN_AGE, MAX_AGE } from '@/lib/validation'
 import { ELECTION_NAME } from '@/lib/election'
+import { readElection } from '@/lib/election-server'
+import { ELECTION_STATUS } from '@/lib/election-status'
+
+// Re-read at most every 15 seconds. The front page takes the traffic spike when
+// a poll opens, so it must stay cacheable, but a cached copy that outlives the
+// opening by minutes would tell voters the poll was still shut while it was
+// running. The status panel polls on top of this for anyone already on the page.
+export const revalidate = 15
 
 // Deliberately no `title` override. A title.template only applies to *child*
 // segments, never to the page sitting in the same segment as the layout that
 // declares it — so the override this page used to carry ("Official Voting
 // Platform") was emitted verbatim, and the front page was the one page whose
 // tab and search result never named the election.
-export const metadata = {
-    description: `Register and vote in the ${ELECTION_NAME}.`,
+//
+// Async, because the election's name belongs to the administrators, not to a
+// constant in this file. ELECTION_NAME survives only as the fallback for a
+// deployment whose settings row has not been configured yet.
+export async function generateMetadata() {
+    const { election } = await readElection()
+    const name = election?.electionName ?? ELECTION_NAME
+    return { description: `Register and vote in the ${name}.` }
 }
 
 /**
@@ -27,8 +41,18 @@ export const metadata = {
  * section repeating the same call to action. That is the shape of a SaaS
  * homepage. None of it told a voter anything the two buttons and four
  * sentences below do not.
+ *
+ * Everything the page says about the election — its name, its window, its
+ * state — now comes from the admin settings row, read here on the server and
+ * handed to the status panel so the first paint is already correct. The one
+ * sentence that used to hardcode the platform's status is gone: an election
+ * whose state lives in a string literal is an election that lies the moment an
+ * administrator changes anything.
  */
-export default function Home() {
+export default async function Home() {
+    const { election } = await readElection()
+    const electionName = election?.electionName ?? ELECTION_NAME
+
     return (
         <div className="flex min-h-dvh flex-col bg-background">
             <TricolourRule />
@@ -42,21 +66,34 @@ export default function Home() {
                         line and putting the action in the subheading removes
                         the possibility, and reads more like a service and less
                         like a slogan. */}
-                    <h1 className="text-display font-semibold text-pretty">{ELECTION_NAME}</h1>
+                    <h1 className="text-display font-semibold text-pretty">{electionName}</h1>
                     <p className="mt-4 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-                        Register with your name, date of birth and phone number, then vote for a
-                        candidate standing in your constituency.
+                        {election?.description?.trim()
+                            ? election.description
+                            : 'Register with your name, date of birth and phone number, then vote for a candidate standing in your constituency.'}
                     </p>
 
-                    <ElectionStatusPanel className="mt-8" />
+                    <ElectionStatusPanel initial={election} className="mt-8" />
 
                     <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                         <Button asChild size="xl">
                             <Link href="/register">Register to vote</Link>
                         </Button>
-                        <Button asChild variant="outline" size="xl">
-                            <Link href="/login">Sign in to vote</Link>
-                        </Button>
+                        {/* Sign-in only leads anywhere while the poll is open,
+                            so it is not offered as a primary action otherwise.
+                            Registration stays available throughout: the
+                            register is open before the poll, and someone
+                            arriving after it closes is told so plainly rather
+                            than finding a button that fails. */}
+                        {election?.status === ELECTION_STATUS.OPEN || !election ? (
+                            <Button asChild variant="outline" size="xl">
+                                <Link href="/login">Sign in to vote</Link>
+                            </Button>
+                        ) : (
+                            <Button asChild variant="outline" size="xl">
+                                <Link href="/election">View election details</Link>
+                            </Button>
+                        )}
                     </div>
 
                     <div className="mt-10 max-w-2xl space-y-8 border-t border-border pt-8 sm:mt-12 sm:pt-10">

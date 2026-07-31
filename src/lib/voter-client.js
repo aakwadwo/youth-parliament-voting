@@ -2,51 +2,27 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
+import { getJson } from '@/lib/api-client'
+import { formatWhen } from '@/lib/election-status'
+
 const KEY = 'nyp.voter'
 
 /**
- * The voter's display details, held in sessionStorage.
+ * Clears the voter details older versions of this app kept in sessionStorage.
  *
- * This is presentation only — it decides whose name to greet and which
- * constituency to show. Authority comes exclusively from the httpOnly
- * `voter_token` cookie, which the browser cannot read or forge, so editing
- * this storage gains an attacker nothing.
+ * Nothing writes that key any more. The ballot used to decide whose name to
+ * greet, and which constituency's candidates to show, from a JSON blob the
+ * browser could edit — so the page rendered for anyone who put a plausible
+ * object there, and the voter's name and constituency sat in browser storage
+ * for the rest of the session. The ballot route now reads all of that from the
+ * httpOnly session cookie during the server render, so the copy is neither
+ * needed nor written.
  *
- * Registration and login used to write different shapes here (`voter_name`
- * versus `full_name`), so a voter who signed in rather than registering was
- * thanked as "undefined" on the confirmation screen. Both paths now go through
- * `storeVoter`, which normalises to one shape.
+ * This remains, and is still called at the end of every voting flow, to clear
+ * the key out of sessions belonging to browsers that loaded an earlier
+ * deployment. It can be deleted once no such session can plausibly still be
+ * open.
  */
-export function storeVoter(voter) {
-    if (typeof window === 'undefined' || !voter) return
-    try {
-        sessionStorage.setItem(
-            KEY,
-            JSON.stringify({
-                id: voter.id,
-                fullName: voter.full_name ?? voter.fullName ?? '',
-                constituencyId: voter.constituency_id ?? voter.constituencyId ?? '',
-                constituencyName: voter.constituency_name ?? voter.constituencyName ?? '',
-            })
-        )
-    } catch {
-        // Private browsing modes can refuse sessionStorage. The ballot still
-        // works — the voter just sees generic wording instead of their name.
-    }
-}
-
-export function readVoter() {
-    if (typeof window === 'undefined') return null
-    try {
-        const raw = sessionStorage.getItem(KEY)
-        if (!raw) return null
-        const parsed = JSON.parse(raw)
-        return parsed?.constituencyId ? parsed : null
-    } catch {
-        return null
-    }
-}
-
 export function clearVoter() {
     if (typeof window === 'undefined') return
     try {
@@ -63,24 +39,42 @@ export function clearVoter() {
  * irreversible step only to be told the poll was never open. It refreshes on
  * an interval and whenever the tab regains focus, so a voter who has had the
  * page open since before the poll opened sees it go live.
+ *
+ * `initial` lets a server component hand over the state it has already read,
+ * so the front page paints the real status rather than a skeleton that
+ * resolves a moment later. The poll still runs on top of it.
  */
-export function useElectionStatus({ pollMs = 60000 } = {}) {
-    const [state, setState] = useState({ data: null, loading: true, error: false })
+export function useElectionStatus({ pollMs = 60000, initial = null } = {}) {
+    const [state, setState] = useState({
+        data: initial,
+        loading: initial === null,
+        error: false,
+    })
 
     const load = useCallback(async (signal) => {
-        try {
-            const res = await fetch('/api/election', { signal })
-            if (!res.ok) throw new Error('failed')
-            setState({ data: await res.json(), loading: false, error: false })
-        } catch (error) {
-            if (error?.name === 'AbortError') return
+        const result = await getJson('/api/election', { signal })
+        if (result.aborted) return
+        if (!result.ok) {
+            // Keep showing the last known status rather than blanking it. A
+            // transient failure to re-check must not make a live election look
+            // as though its state is unknown.
             setState((prev) => ({ data: prev.data, loading: false, error: true }))
+            return
         }
+        setState({ data: result.data, loading: false, error: false })
     }, [])
 
     useEffect(() => {
         const controller = new AbortController()
-        load(controller.signal)
+
+        // Called through an async wrapper rather than directly from the effect
+        // body. `load` sets no state before its first await, so the mount
+        // cannot cascade into a second render before paint — and this is the
+        // shape react-hooks/set-state-in-effect accepts for fetch-on-mount.
+        async function loadNow() {
+            await load(controller.signal)
+        }
+        loadNow()
 
         const timer = setInterval(() => load(controller.signal), pollMs)
         const onFocus = () => load(controller.signal)
@@ -96,26 +90,46 @@ export function useElectionStatus({ pollMs = 60000 } = {}) {
     return state
 }
 
+/**
+ * How each state is described to a voter.
+ *
+ * `label` is the short form for the status pill; `detail` is the sentence
+ * underneath, which is where the actual dates go. The landing page used to
+ * carry none of this — it stated the election's position in hardcoded prose
+ * that only changed when someone edited the source.
+ *
+ * A window with no configured dates still has to read as a complete sentence,
+ * so every `detail` degrades to something true rather than to an empty line.
+ */
 const STATUS_COPY = {
     open: {
         variant: 'success',
         label: 'Voting is open',
-        detail: (e) => (e.closesAt ? `Closes ${formatWhen(e.closesAt)}` : null),
+        detail: (e) =>
+            e.opensAt && e.closesAt
+                ? `Voting is open from ${formatWhen(e.opensAt)} to ${formatWhen(e.closesAt)}`
+                : e.closesAt
+                  ? `Voting closes ${formatWhen(e.closesAt)}`
+                  : 'Voting is open now',
     },
     scheduled: {
         variant: 'warning',
         label: 'Voting has not opened yet',
-        detail: (e) => (e.opensAt ? `Opens ${formatWhen(e.opensAt)}` : null),
+        detail: (e) =>
+            e.opensAt
+                ? `Voting opens on ${formatWhen(e.opensAt)}`
+                : 'Voting opens during the scheduled election period',
     },
     ended: {
         variant: 'neutral',
-        label: 'Voting has closed',
-        detail: (e) => (e.closesAt ? `Closed ${formatWhen(e.closesAt)}` : null),
+        label: 'Voting has ended',
+        detail: (e) =>
+            e.closesAt ? `Voting ended ${formatWhen(e.closesAt)}` : 'Voting has ended',
     },
     closed: {
         variant: 'neutral',
         label: 'Voting is currently closed',
-        detail: () => null,
+        detail: () => 'Voting is not open at the moment',
     },
 }
 
@@ -125,18 +139,10 @@ export function describeElection(election) {
     return { ...copy, detail: copy.detail(election) }
 }
 
-/** Ghana keeps GMT year-round, so the platform states one unambiguous zone. */
-export function formatWhen(value) {
-    try {
-        return new Intl.DateTimeFormat('en-GB', {
-            weekday: 'short',
-            day: 'numeric',
-            month: 'short',
-            hour: '2-digit',
-            minute: '2-digit',
-            timeZone: 'Africa/Accra',
-        }).format(new Date(value))
-    } catch {
-        return ''
-    }
-}
+// formatWhen moved to @/lib/election-status so that server components — the
+// ballot route guard among them — can format the same dates. Exports from a
+// 'use client' module become client references and cannot be called during a
+// server render. Imported above (a bare `export ... from` would re-export it
+// without binding the name in this module, which is what STATUS_COPY needs)
+// and re-exported here so existing imports keep working.
+export { formatWhen }

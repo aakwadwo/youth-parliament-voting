@@ -5,13 +5,19 @@ import { StatusPill } from '@/components/ui/badge'
 import { useElectionStatus, describeElection } from '@/lib/voter-client'
 
 /**
- * States the election's name and whether the poll is open.
+ * States the election's name, its window and whether the poll is open.
  *
  * Without it a voter could complete registration and select a candidate before
  * discovering, at the single irreversible step, that voting had not opened.
+ *
+ * `initial` is the state a server component has already read. Passing it
+ * matters on the landing page: the front door of the service should not open
+ * on a grey placeholder that resolves into the election's status a moment
+ * later, and someone on a slow connection should not be shown nothing where
+ * the server already knew the answer.
  */
-export function ElectionStatusPanel({ className }) {
-    const { data, loading, error } = useElectionStatus()
+export function ElectionStatusPanel({ initial = null, className }) {
+    const { data, loading, error } = useElectionStatus({ initial })
 
     if (loading && !data) {
         return <Skeleton className={`h-[4.5rem] w-full rounded-xl ${className ?? ''}`} />

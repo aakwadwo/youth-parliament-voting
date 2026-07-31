@@ -1,6 +1,7 @@
 import { PageShell, PageHeading } from '@/components/layout/PageShell'
 import { Prose, LastUpdated } from '@/components/layout/Prose'
 import { MIN_AGE, MAX_AGE } from '@/lib/validation'
+import { ELECTORAL_COMMISSION } from '@/lib/election'
 
 export const metadata = {
     title: 'Terms of use',
@@ -15,7 +16,7 @@ export default function TermsPage() {
                 title="Terms of use"
                 description="The rules for using this service."
             />
-            <LastUpdated date="2026-07-30" />
+            <LastUpdated date="2026-07-31" />
 
             <Prose className="mt-8">
                 <h2>Who may use this service</h2>
@@ -54,6 +55,49 @@ export default function TermsPage() {
                 <p>
                     Attempting to cast more than one ballot, or to interfere with the conduct of
                     the election, may be an offence. We record and report such attempts.
+                </p>
+
+                <h2>One device, one registration</h2>
+                <p>
+                    Each device may be used to complete one voter registration. If a registration
+                    has already been completed on the device you are using, you will not be able to
+                    start another one from it. This is an anti-abuse measure, not a judgement about
+                    you: if you have not registered before and are prevented from doing so, contact
+                    the {ELECTORAL_COMMISSION} and we will help you register.
+                </p>
+                <p>
+                    Households that share a single phone should be aware of this. Where a genuine
+                    need to register more than one voter from one device arises, the Commission can
+                    arrange it.
+                </p>
+
+                <h2>Technical measures we use</h2>
+                <p>
+                    The {ELECTORAL_COMMISSION} uses technical measures to protect the integrity of
+                    the election and to prevent duplicate or automated registration. These include
+                    limits on how often registration and sign-in may be attempted, and a check that
+                    recognises a device that has already been used to register.
+                </p>
+                <p>
+                    These checks record only what is needed to detect repeated use. They do not
+                    record your location, they do not build a profile of you, and they are never
+                    connected to the ballot you cast. How your information is handled is set out in
+                    the <a href="/privacy">privacy notice</a>.
+                </p>
+
+                <h2>Accuracy of the details you give</h2>
+                <p>
+                    You are responsible for the accuracy of the information you provide. Your name,
+                    date of birth, mobile number and constituency must be your own and must be
+                    correct. An incorrect constituency means voting in the wrong contest, and an
+                    incorrect mobile number means being unable to sign in again.
+                </p>
+                <p>
+                    Where a registration contains information that is false, misleading, incomplete
+                    or obviously fictitious, the {ELECTORAL_COMMISSION} may remove it. The
+                    Commission may also take other steps that are reasonably necessary to maintain
+                    the integrity and fairness of the election. Where a registration is removed and
+                    the Commission holds a means of contact, it will say so.
                 </p>
 
                 <h2>Availability</h2>

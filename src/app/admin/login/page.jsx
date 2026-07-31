@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Field } from '@/components/ui/field'
 import { Alert, LiveRegion } from '@/components/ui/alert'
-import { Spinner } from '@/components/ui/feedback'
 import { BrandMark, TricolourRule } from '@/components/brand/BrandMark'
 import { ELECTION_NAME } from '@/lib/election'
 
@@ -128,10 +127,10 @@ function AdminLoginForm() {
                                     type="submit"
                                     size="lg"
                                     className="w-full"
-                                    disabled={loading}
+                                    pending={loading}
+                                    pendingLabel="Signing in…"
                                 >
-                                    {loading ? <Spinner /> : null}
-                                    {loading ? 'Signing in…' : 'Sign in'}
+                                    Sign in
                                 </Button>
                             </form>
                         </CardContent>

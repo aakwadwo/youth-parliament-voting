@@ -32,5 +32,8 @@ export const ELECTORAL_COMMISSION = 'National Youth Parliament Electoral Commiss
 /** The firm that built and maintains the platform. Credited, never co-branded. */
 export const TECHNOLOGY_PROVIDER = 'Kas Maven Consult'
 
+/** Supplier's own page, linked only from the institutional credit in the footer. */
+export const TECHNOLOGY_PROVIDER_URL = 'https://www.linkedin.com/company/kas-maven-consult'
+
 /** Short form for the site masthead, where the full name does not fit. */
 export const ORGANISATION_SHORT_NAME = 'Youth Parliament Ghana'

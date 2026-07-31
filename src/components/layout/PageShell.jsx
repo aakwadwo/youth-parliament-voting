@@ -8,6 +8,7 @@ import {
     ORGANISATION_NAME,
     ORGANISATION_SHORT_NAME,
     TECHNOLOGY_PROVIDER,
+    TECHNOLOGY_PROVIDER_URL,
 } from '@/lib/election'
 
 const FOOTER_LINKS = [
@@ -48,7 +49,7 @@ export function SiteHeader({ className }) {
  * own tricolour, which is how spacing and the logo treatment drifted between
  * the landing, registration, login and ballot pages.
  */
-export function PageShell({ children, width = 'md', className }) {
+export function PageShell({ children, width = 'md', className, credit = true }) {
     const maxWidth = {
         sm: 'max-w-md',
         md: 'max-w-lg',
@@ -72,12 +73,20 @@ export function PageShell({ children, width = 'md', className }) {
                 {children}
             </main>
 
-            <SiteFooter />
+            <SiteFooter credit={credit} />
         </div>
     )
 }
 
-export function SiteFooter({ className }) {
+/**
+ * `credit` carries the supplier attribution, and is switched off for the whole
+ * voter transaction — registration, sign-in, the ballot and both confirmation
+ * screens. A voter part-way through casting a ballot should see one institution
+ * on the page and one only; a contractor's mark sitting under the Submit button
+ * invites the question of who is actually running the election. It stays on the
+ * landing page and the policy pages, where an institutional credit belongs.
+ */
+export function SiteFooter({ className, credit = true }) {
     return (
         <footer className={cn('mt-auto border-t border-border bg-surface', className)}>
             <div className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-6">
@@ -111,26 +120,34 @@ export function SiteFooter({ className }) {
                     read as co-branding on a ballot platform. Small caption,
                     muted label, mark at text height — the pattern government
                     services use to credit an implementation partner. */}
-                <div className="mt-6 border-t border-border pt-5">
-                    {/* Not a link: no public URL for the supplier was supplied,
-                        and a guessed one on a government ballot platform is
-                        worse than none. */}
-                    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                        <span>Platform developed by</span>
-                        <Image
-                            src="/brand/kas-maven-consult.png"
-                            alt={TECHNOLOGY_PROVIDER}
-                            width={143}
-                            height={66}
-                            // Height-constrained to the cap height of the text
-                            // beside it. The source was a 1254px square that was
-                            // ~65% white margin; it is cropped to the wordmark
-                            // and keyed to transparency, so there is no white
-                            // plate sitting on the surface colour.
-                            className="h-[1.15rem] w-auto dark:brightness-125"
-                        />
-                    </p>
-                </div>
+                {credit ? (
+                    <div className="mt-6 border-t border-border pt-5">
+                        <a
+                            href={TECHNOLOGY_PROVIDER_URL}
+                            target="_blank"
+                            // noreferrer as well as noopener: the Commission has
+                            // no reason to leak which page of an electoral
+                            // service a visitor came from to a third party.
+                            rel="noopener noreferrer"
+                            className="-my-1 inline-flex flex-wrap items-center gap-x-2 gap-y-1 py-1 text-xs text-muted-foreground transition-opacity hover:opacity-70 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
+                        >
+                            <span>Platform developed by</span>
+                            <Image
+                                src="/brand/kas-maven-consult.png"
+                                alt={TECHNOLOGY_PROVIDER}
+                                width={143}
+                                height={66}
+                                // Height-constrained to the cap height of the
+                                // text beside it. The source was a 1254px square
+                                // that was ~65% white margin; it is cropped to
+                                // the wordmark and keyed to transparency, so
+                                // there is no white plate on the surface colour.
+                                className="h-[1.15rem] w-auto dark:brightness-125"
+                            />
+                            <span className="sr-only">(opens in a new tab)</span>
+                        </a>
+                    </div>
+                ) : null}
             </div>
         </footer>
     )

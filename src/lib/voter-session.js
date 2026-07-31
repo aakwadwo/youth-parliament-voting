@@ -28,7 +28,23 @@ export function clearVoterCookie(response) {
 // Returns the authenticated voterId from the request cookie, or null if
 // missing/invalid/expired. Callers must never trust a client-supplied voter_id.
 export async function getVoterIdFromRequest(request) {
-    const token = request.cookies.get(COOKIE_NAME)?.value
+    return verifyToken(request.cookies.get(COOKIE_NAME)?.value)
+}
+
+/**
+ * The same check for server components, which are handed no request object.
+ *
+ * The ballot page needs this: its identity check used to live in a `useEffect`
+ * reading sessionStorage, which is display data the browser can edit, so the
+ * page rendered for anyone who put a plausible object there and only the vote
+ * API ever checked the real credential. Reading the httpOnly cookie during the
+ * server render moves that check in front of the page instead of behind it.
+ */
+export async function getVoterIdFromCookies(cookieStore) {
+    return verifyToken(cookieStore.get(COOKIE_NAME)?.value)
+}
+
+async function verifyToken(token) {
     if (!token) return null
     try {
         const { payload } = await jwtVerify(token, secret)

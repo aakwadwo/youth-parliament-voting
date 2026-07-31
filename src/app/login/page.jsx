@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -9,10 +9,15 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Field } from '@/components/ui/field'
 import { Alert, LiveRegion } from '@/components/ui/alert'
-import { Spinner } from '@/components/ui/feedback'
 import { PageShell, PageHeading } from '@/components/layout/PageShell'
-import { storeVoter, clearVoter } from '@/lib/voter-client'
+import { VotingNotOpen } from '@/components/VotingNotOpen'
+import { clearVoter } from '@/lib/voter-client'
+import { postJson } from '@/lib/api-client'
+import { ELECTION_GATE_CODES, ELECTION_STATUS } from '@/lib/election-status'
 import { isValidGhanaPhone, isValidDateString, normalisePhone, dobBounds } from '@/lib/validation'
+
+/** The codes that mean "the poll is not open", whatever the wording. */
+const ELECTION_CLOSED_CODES = new Set(Object.values(ELECTION_GATE_CODES))
 
 export default function LoginPage() {
     const router = useRouter()
@@ -21,7 +26,13 @@ export default function LoginPage() {
     const [errors, setErrors] = useState({})
     const [submitError, setSubmitError] = useState('')
     const [loading, setLoading] = useState(false)
+    // See handleSubmit: guards the gap before the disabled state renders.
+    const inFlight = useRef(false)
     const [alreadyVoted, setAlreadyVoted] = useState(null)
+    // Holds the election state when sign-in was refused because the poll is not
+    // open. Distinct from `submitError`, which is for sign-ins that actually
+    // failed.
+    const [electionClosed, setElectionClosed] = useState(undefined)
 
     function update(key, value) {
         setForm((prev) => ({ ...prev, [key]: value }))
@@ -30,6 +41,10 @@ export default function LoginPage() {
 
     async function handleSubmit(event) {
         event.preventDefault()
+
+        // Two fast taps would otherwise fire this twice before the button
+        // re-renders as disabled.
+        if (inFlight.current) return
 
         const nextErrors = {}
         if (!isValidGhanaPhone(form.voter_phone)) {
@@ -46,43 +61,56 @@ export default function LoginPage() {
             return
         }
 
+        inFlight.current = true
         setLoading(true)
         setSubmitError('')
 
-        try {
-            const res = await fetch('/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    voter_phone: normalisePhone(form.voter_phone),
-                    voter_dob: form.voter_dob,
-                }),
-            })
-            const data = await res.json()
+        const result = await postJson('/api/login', {
+            voter_phone: normalisePhone(form.voter_phone),
+            voter_dob: form.voter_dob,
+        })
 
-            if (!res.ok) {
-                setSubmitError(data.error ?? 'We could not sign you in.')
+        inFlight.current = false
+        setLoading(false)
+
+        if (!result.ok) {
+            // Signing in outside the voting window is not a failed sign-in and
+            // must not be reported as one — the credentials were never even
+            // checked. It gets the election's own screen instead of a red
+            // "could not sign you in" box above a form the voter will retype.
+            if (ELECTION_CLOSED_CODES.has(result.code)) {
+                setElectionClosed(result.data?.election ?? null)
                 return
             }
-
-            if (data.already_voted) {
-                clearVoter()
-                setAlreadyVoted(data.voter)
-                return
-            }
-
-            storeVoter(data.voter)
-            router.push('/vote/candidates')
-        } catch {
-            setSubmitError('We could not reach the server. Check your connection and try again.')
-        } finally {
-            setLoading(false)
+            setSubmitError(result.error)
+            return
         }
+
+        if (result.data.already_voted) {
+            clearVoter()
+            setAlreadyVoted(result.data.voter)
+            return
+        }
+
+        // The session cookie the API just set is the only thing the ballot
+        // needs; it reads the voter's details from it server-side.
+        clearVoter()
+        router.push('/vote/candidates')
+    }
+
+    if (electionClosed !== undefined) {
+        return (
+            <VotingNotOpen election={electionClosed}>
+                {electionClosed?.status === ELECTION_STATUS.ENDED
+                    ? 'Sign-in is closed for this election. If you voted, your ballot has been counted.'
+                    : 'You will be able to sign in and vote once the poll opens. If you have already registered, there is nothing else to do now.'}
+            </VotingNotOpen>
+        )
     }
 
     if (alreadyVoted) {
         return (
-            <PageShell width="sm">
+            <PageShell width="sm" credit={false}>
                 <PageHeading
                     title="You have already voted"
                     description={`${alreadyVoted.full_name}, your ballot has been recorded.`}
@@ -99,7 +127,7 @@ export default function LoginPage() {
     }
 
     return (
-        <PageShell width="sm">
+        <PageShell width="sm" credit={false}>
             <PageHeading
                 title="Sign in to vote"
                 description="Use the mobile number and date of birth you registered with."
@@ -155,9 +183,14 @@ export default function LoginPage() {
                             </Alert>
                         ) : null}
 
-                        <Button type="submit" size="xl" className="w-full" disabled={loading}>
-                            {loading ? <Spinner /> : null}
-                            {loading ? 'Signing in…' : 'Sign in'}
+                        <Button
+                            type="submit"
+                            size="xl"
+                            className="w-full"
+                            pending={loading}
+                            pendingLabel="Signing in…"
+                        >
+                            Sign in
                         </Button>
                     </form>
                 </CardContent>

@@ -114,10 +114,11 @@ function AdminPortal() {
                 variant="ghost"
                 className="w-full justify-start text-muted-foreground"
                 onClick={handleSignOut}
-                disabled={signingOut}
+                pending={signingOut}
+                pendingLabel="Signing out…"
             >
                 <LogOut aria-hidden="true" />
-                {signingOut ? 'Signing out…' : 'Sign out'}
+                Sign out
             </Button>
         </div>
     )

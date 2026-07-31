@@ -242,7 +242,8 @@ export default function Settings() {
                             <Button
                                 variant={settings.is_active ? 'destructive' : 'default'}
                                 onClick={() => setConfirmingToggle(true)}
-                                disabled={togglePending}
+                                pending={togglePending}
+                                pendingLabel="Updating…"
                             >
                                 {settings.is_active ? 'Close voting' : 'Open voting'}
                             </Button>
@@ -304,8 +305,8 @@ export default function Settings() {
                         </div>
 
                         <div className="flex justify-end">
-                            <Button type="submit" disabled={saving}>
-                                {saving ? 'Saving…' : 'Save changes'}
+                            <Button type="submit" pending={saving} pendingLabel="Saving…">
+                                Save changes
                             </Button>
                         </div>
                     </form>
