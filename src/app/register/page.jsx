@@ -205,6 +205,8 @@ export default function RegisterPage() {
                         size="sm"
                         className="mt-3"
                         onClick={loadConstituencies}
+                        pending={constituenciesLoading}
+                        pendingLabel="Trying again…"
                     >
                         Try again
                     </Button>
@@ -341,15 +343,15 @@ export default function RegisterPage() {
                 </CardContent>
             </Card>
 
-            <p className="mt-6 text-sm text-muted-foreground">
-                Already registered?{' '}
-                <Link
-                    href="/login"
-                    className="font-medium text-primary underline underline-offset-4"
-                >
-                    Sign in to vote
-                </Link>
-            </p>
+            {/* No sign-in link here.
+                Sign-in is gated on the election being open, so outside the
+                voting window this was a prominent invitation into a flow that
+                answers with a refusal screen — the registration page urging
+                voters towards the one door the platform holds shut. Someone who
+                is already registered and arrives while the poll is open still
+                reaches sign-in from the landing page and from the election
+                details page, both of which only offer it when it leads
+                somewhere. */}
 
             <LiveRegion message={submitting ? 'Submitting your registration' : ''} />
         </PageShell>

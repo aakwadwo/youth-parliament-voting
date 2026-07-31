@@ -302,8 +302,14 @@ export default function Constituencies() {
                     {loadError ? (
                         <Alert variant="danger" title="Could not load constituencies">
                             <p>{loadError}</p>
-                            <Button variant="outline" size="sm" className="mt-3" onClick={reload}>
-                                <RefreshCw aria-hidden="true" />
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="mt-3"
+                                onClick={reload}
+                                pending={loading}
+                            >
+                                {loading ? null : <RefreshCw aria-hidden="true" />}
                                 Try again
                             </Button>
                         </Alert>
@@ -442,9 +448,12 @@ export default function Constituencies() {
                                 >
                                     Cancel
                                 </Button>
-                                <Button type="submit" disabled={formLoading}>
-                                    {formLoading ? <Spinner /> : null}
-                                    {formLoading ? 'Adding…' : 'Add constituency'}
+                                <Button
+                                    type="submit"
+                                    pending={formLoading}
+                                    pendingLabel="Adding…"
+                                >
+                                    Add constituency
                                 </Button>
                             </div>
                         </form>

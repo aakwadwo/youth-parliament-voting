@@ -9,13 +9,17 @@ import { StatusPill } from '@/components/ui/badge'
 import { Stat, StatGrid, StatSkeleton } from '@/components/ui/stat'
 import { Skeleton, VoteBar, EmptyState } from '@/components/ui/feedback'
 import { SectionHeader } from '@/components/admin/SectionHeader'
+import { ELECTION_STATUS_TONE } from '@/lib/election-status'
 import { formatWhen } from '@/lib/voter-client'
 
+// Shorter labels than the voter-facing pills — an administrator is scanning a
+// dashboard, not reading a sentence — but the same tones, so the state an
+// administrator sees here is the state a voter sees on the front page.
 const STATUS = {
-    open: { variant: 'success', label: 'Open' },
-    scheduled: { variant: 'warning', label: 'Scheduled' },
-    ended: { variant: 'neutral', label: 'Closed' },
-    closed: { variant: 'neutral', label: 'Closed' },
+    open: { variant: ELECTION_STATUS_TONE.open, label: 'Open' },
+    scheduled: { variant: ELECTION_STATUS_TONE.scheduled, label: 'Scheduled' },
+    ended: { variant: ELECTION_STATUS_TONE.ended, label: 'Closed' },
+    closed: { variant: ELECTION_STATUS_TONE.closed, label: 'Closed' },
 }
 
 const nf = new Intl.NumberFormat('en-GB')
@@ -31,7 +35,14 @@ export default function Dashboard() {
                 <SectionHeader title="Dashboard" />
                 <Alert variant="danger" title="Could not load the dashboard">
                     <p>{error}</p>
-                    <Button variant="outline" size="sm" className="mt-3" onClick={reload}>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3"
+                        onClick={reload}
+                        pending={loading}
+                        pendingLabel="Trying again…"
+                    >
                         Try again
                     </Button>
                 </Alert>
@@ -63,8 +74,11 @@ export default function Dashboard() {
                 title="Dashboard"
                 description={election.name ?? 'No election configured yet.'}
                 actions={
-                    <Button variant="outline" size="sm" onClick={reload}>
-                        <RefreshCw aria-hidden="true" />
+                    // The icon gives way to the spinner rather than sitting
+                    // beside it: both are size-4 behind the same gap, so the
+                    // button does not change width mid-refresh.
+                    <Button variant="outline" size="sm" onClick={reload} pending={loading}>
+                        {loading ? null : <RefreshCw aria-hidden="true" />}
                         Refresh
                     </Button>
                 }

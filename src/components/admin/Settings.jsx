@@ -81,6 +81,7 @@ export default function Settings() {
 
     const {
         data: auditLog,
+        loading: auditLogLoading,
         error: auditLogError,
         reload: reloadAuditLog,
     } = useFetch('/api/admin/audit-log', {
@@ -186,8 +187,14 @@ export default function Settings() {
                 <SectionHeader title="Settings" />
                 <Alert variant="danger" title="Could not load settings">
                     <p>{loadError}</p>
-                    <Button variant="outline" size="sm" className="mt-3" onClick={reload}>
-                        <RefreshCw aria-hidden="true" />
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3"
+                        onClick={reload}
+                        pending={loading}
+                    >
+                        {loading ? null : <RefreshCw aria-hidden="true" />}
                         Try again
                     </Button>
                 </Alert>
@@ -233,10 +240,11 @@ export default function Settings() {
                             </p>
                         </div>
                         <div className="flex items-center gap-3">
-                            <StatusPill
-                                variant={settings.is_active ? 'success' : 'neutral'}
-                                pulse={settings.is_active}
-                            >
+                            {/* No `pulse` prop: StatusPill has never accepted
+                                one, so it was being spread onto the <span> as
+                                an unknown DOM attribute and React warned about
+                                it on every render of this panel. */}
+                            <StatusPill variant={settings.is_active ? 'success' : 'neutral'}>
                                 {settings.is_active ? 'Open' : 'Closed'}
                             </StatusPill>
                             <Button
@@ -323,8 +331,13 @@ export default function Settings() {
                                 Every action that can affect an election result
                             </p>
                         </div>
-                        <Button variant="outline" size="sm" onClick={reloadAuditLog}>
-                            <RefreshCw aria-hidden="true" />
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={reloadAuditLog}
+                            pending={auditLogLoading}
+                        >
+                            {auditLogLoading ? null : <RefreshCw aria-hidden="true" />}
                             <span className="sr-only sm:not-sr-only">Refresh</span>
                         </Button>
                     </div>

@@ -285,6 +285,8 @@ export default function Ballot({ voter }) {
                         size="sm"
                         className="mt-3"
                         onClick={() => loadCandidates(voter.constituencyId)}
+                        pending={candidatesLoading}
+                        pendingLabel="Trying again…"
                     >
                         Try again
                     </Button>

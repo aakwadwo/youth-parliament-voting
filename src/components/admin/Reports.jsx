@@ -4,7 +4,6 @@ import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
-import { Spinner } from '@/components/ui/feedback'
 import { SectionHeader } from '@/components/admin/SectionHeader'
 import { useFetch } from '@/lib/useFetch'
 import { formatWhen } from '@/lib/voter-client'
@@ -168,10 +167,21 @@ export default function Reports() {
                                 variant="outline"
                                 className="shrink-0 sm:w-32"
                                 onClick={() => handleExport(format.id)}
+                                // Every format is disabled while any one of them
+                                // is building: the three share one download
+                                // slot, and a second export queued behind the
+                                // first would land as a file the administrator
+                                // did not ask for.
                                 disabled={downloading !== null}
+                                pending={downloading === format.id}
+                                pendingLabel={
+                                    <>
+                                        Building…
+                                        <span className="sr-only"> {format.name} report</span>
+                                    </>
+                                }
                             >
-                                {downloading === format.id ? <Spinner /> : null}
-                                {downloading === format.id ? 'Building…' : 'Download'}
+                                Download
                                 <span className="sr-only"> {format.name} report</span>
                             </Button>
                         </li>

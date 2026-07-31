@@ -6,7 +6,7 @@ import { PageShell, PageHeading } from '@/components/layout/PageShell'
 import { ElectionWindow } from '@/components/VotingNotOpen'
 import { Prose } from '@/components/layout/Prose'
 import { readElection } from '@/lib/election-server'
-import { ELECTION_STATUS, formatWhen } from '@/lib/election-status'
+import { ELECTION_STATUS, ELECTION_STATUS_TONE, formatWhen } from '@/lib/election-status'
 import { ELECTION_NAME, ELECTORAL_COMMISSION } from '@/lib/election'
 
 /**
@@ -34,11 +34,20 @@ export async function generateMetadata() {
     }
 }
 
+// Labels only. The tone comes from ELECTION_STATUS_TONE, shared with the
+// landing panel and the admin dashboard: green means a ballot can be cast right
+// now, and every other state is the same neutral.
 const STATUS_PILL = {
-    [ELECTION_STATUS.OPEN]: { variant: 'success', label: 'Voting is open' },
-    [ELECTION_STATUS.SCHEDULED]: { variant: 'warning', label: 'Voting has not opened yet' },
-    [ELECTION_STATUS.ENDED]: { variant: 'neutral', label: 'Voting has ended' },
-    [ELECTION_STATUS.CLOSED]: { variant: 'neutral', label: 'Voting is currently closed' },
+    [ELECTION_STATUS.OPEN]: { variant: ELECTION_STATUS_TONE.open, label: 'Voting is open' },
+    [ELECTION_STATUS.SCHEDULED]: {
+        variant: ELECTION_STATUS_TONE.scheduled,
+        label: 'Voting has not opened yet',
+    },
+    [ELECTION_STATUS.ENDED]: { variant: ELECTION_STATUS_TONE.ended, label: 'Voting has ended' },
+    [ELECTION_STATUS.CLOSED]: {
+        variant: ELECTION_STATUS_TONE.closed,
+        label: 'Voting is currently closed',
+    },
 }
 
 /** The sentence the spec asks the platform to lead with in each state. */

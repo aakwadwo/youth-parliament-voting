@@ -4,7 +4,6 @@ import * as React from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
-import { Spinner } from '@/components/ui/feedback'
 import {
     Dialog,
     DialogContent,
@@ -29,6 +28,12 @@ export function ConfirmDialog({
     title,
     description,
     confirmLabel = 'Confirm',
+    // What the confirm button says while the action is in flight. Defaults to
+    // the confirm label itself, which is enough to give the button the shared
+    // pending treatment — spinner, aria-busy and a width that already allows
+    // for the spinner, so a dialog footer never reflows under the pointer as
+    // an administrator closes voting.
+    pendingLabel = confirmLabel,
     cancelLabel = 'Cancel',
     tone = 'default',
     warning,
@@ -56,9 +61,9 @@ export function ConfirmDialog({
                     <Button
                         variant={tone === 'destructive' ? 'destructive' : 'default'}
                         onClick={onConfirm}
-                        disabled={pending}
+                        pending={pending}
+                        pendingLabel={pendingLabel}
                     >
-                        {pending ? <Spinner /> : null}
                         {confirmLabel}
                     </Button>
                 </DialogFooter>

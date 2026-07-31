@@ -110,14 +110,17 @@ function AdminPortal() {
 
     const signOutButton = (
         <div className="border-t border-sidebar-border p-3">
+            {/* Left-aligned, so the label keeps its position: the spinner takes
+                the icon's place rather than being added in front of it, and the
+                label is unchanged. A pendingLabel here would centre the button's
+                contents and shunt "Sign out" sideways as it changed. */}
             <Button
                 variant="ghost"
                 className="w-full justify-start text-muted-foreground"
                 onClick={handleSignOut}
                 pending={signingOut}
-                pendingLabel="Signing out…"
             >
-                <LogOut aria-hidden="true" />
+                {signingOut ? null : <LogOut aria-hidden="true" />}
                 Sign out
             </Button>
         </div>

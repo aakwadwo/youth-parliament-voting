@@ -7,8 +7,10 @@ import {
     isVotingOpen,
     electionGateMessage,
     electionGateCode,
+    electionStatusTone,
     toPublicElection,
     ELECTION_GATE_MESSAGES,
+    ELECTION_STATUS_TONE,
     formatDateLong,
     formatDateTimeLong,
 } from '@/lib/election-status'
@@ -150,6 +152,45 @@ test('the two required gate sentences are exactly as specified', () => {
         'The election has not started yet.'
     )
     assert.equal(ELECTION_GATE_MESSAGES[ELECTION_STATUS.ENDED], 'The election has ended.')
+})
+
+/**
+ * The status pill is the one thing on the front page a voter reads before
+ * anything else, and colour is how they read it. Green has to mean "a ballot
+ * can be cast right now" and nothing else, on every screen that shows a pill.
+ */
+
+test('only an open poll is shown in green', () => {
+    assert.equal(electionStatusTone(ELECTION_STATUS.OPEN), 'success')
+    for (const status of [
+        ELECTION_STATUS.SCHEDULED,
+        ELECTION_STATUS.ENDED,
+        ELECTION_STATUS.CLOSED,
+    ]) {
+        assert.equal(
+            electionStatusTone(status),
+            'neutral',
+            `${status} is not shown in the same neutral as a closed poll`
+        )
+    }
+})
+
+test('a scheduled election is not styled as a warning', () => {
+    // It was amber, which put a caution colour on the ordinary state of an
+    // election that has simply been announced and has not started yet.
+    assert.notEqual(ELECTION_STATUS_TONE[ELECTION_STATUS.SCHEDULED], 'warning')
+    assert.equal(
+        ELECTION_STATUS_TONE[ELECTION_STATUS.SCHEDULED],
+        ELECTION_STATUS_TONE[ELECTION_STATUS.ENDED]
+    )
+})
+
+test('every state has a tone, and an unknown one falls back to neutral', () => {
+    for (const status of Object.values(ELECTION_STATUS)) {
+        assert.match(electionStatusTone(status), /\S/)
+    }
+    assert.equal(electionStatusTone('something-else'), 'neutral')
+    assert.equal(electionStatusTone(undefined), 'neutral')
 })
 
 test('an unknown status falls back to the closed wording rather than undefined', () => {

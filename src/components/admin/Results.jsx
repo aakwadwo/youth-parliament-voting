@@ -51,8 +51,14 @@ export default function Results() {
                 <SectionHeader title="Results" />
                 <Alert variant="danger" title="Could not load results">
                     <p>{error}</p>
-                    <Button variant="outline" size="sm" className="mt-3" onClick={reload}>
-                        <RefreshCw aria-hidden="true" />
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3"
+                        onClick={reload}
+                        pending={loading}
+                    >
+                        {loading ? null : <RefreshCw aria-hidden="true" />}
                         Try again
                     </Button>
                 </Alert>

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { getJson } from '@/lib/api-client'
-import { formatWhen } from '@/lib/election-status'
+import { ELECTION_STATUS_TONE, formatWhen } from '@/lib/election-status'
 
 const KEY = 'nyp.voter'
 
@@ -100,10 +100,14 @@ export function useElectionStatus({ pollMs = 60000, initial = null } = {}) {
  *
  * A window with no configured dates still has to read as a complete sentence,
  * so every `detail` degrades to something true rather than to an empty line.
+ *
+ * The colours are not chosen here. They come from ELECTION_STATUS_TONE, which
+ * is shared with the election details page and the admin dashboard so that one
+ * election state cannot be green on one screen and amber on the next.
  */
 const STATUS_COPY = {
     open: {
-        variant: 'success',
+        variant: ELECTION_STATUS_TONE.open,
         label: 'Voting is open',
         detail: (e) =>
             e.opensAt && e.closesAt
@@ -113,7 +117,7 @@ const STATUS_COPY = {
                   : 'Voting is open now',
     },
     scheduled: {
-        variant: 'warning',
+        variant: ELECTION_STATUS_TONE.scheduled,
         label: 'Voting has not opened yet',
         detail: (e) =>
             e.opensAt
@@ -121,13 +125,13 @@ const STATUS_COPY = {
                 : 'Voting opens during the scheduled election period',
     },
     ended: {
-        variant: 'neutral',
+        variant: ELECTION_STATUS_TONE.ended,
         label: 'Voting has ended',
         detail: (e) =>
             e.closesAt ? `Voting ended ${formatWhen(e.closesAt)}` : 'Voting has ended',
     },
     closed: {
-        variant: 'neutral',
+        variant: ELECTION_STATUS_TONE.closed,
         label: 'Voting is currently closed',
         detail: () => 'Voting is not open at the moment',
     },

@@ -86,6 +86,31 @@ export function deriveElectionStatus(row, now = Date.now()) {
     return ELECTION_STATUS.CLOSED
 }
 
+/**
+ * The one colour each state is shown in, wherever a status pill appears.
+ *
+ * Green means one thing on this platform and one thing only: a ballot can be
+ * cast right now. Every other state is the same neutral, because from a voter's
+ * point of view they are the same fact — the poll is not open — and giving
+ * "scheduled" its own amber treatment made an election that had simply not
+ * started yet look like a warning, or worse, like something in progress.
+ *
+ * Kept here rather than beside each pill because the three surfaces that render
+ * one — the landing panel, the election details page and the admin dashboard —
+ * each had their own copy of this map, which is exactly how they came to
+ * disagree.
+ */
+export const ELECTION_STATUS_TONE = {
+    [ELECTION_STATUS.OPEN]: 'success',
+    [ELECTION_STATUS.SCHEDULED]: 'neutral',
+    [ELECTION_STATUS.ENDED]: 'neutral',
+    [ELECTION_STATUS.CLOSED]: 'neutral',
+}
+
+export function electionStatusTone(status) {
+    return ELECTION_STATUS_TONE[status] ?? ELECTION_STATUS_TONE[ELECTION_STATUS.CLOSED]
+}
+
 /** The one question every gate actually asks. */
 export function isVotingOpen(status) {
     return status === ELECTION_STATUS.OPEN

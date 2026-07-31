@@ -1,6 +1,7 @@
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { ELECTION_NAME, ORGANISATION_NAME } from '@/lib/election'
+import { readElection } from '@/lib/election-server'
 
 // One variable font, self-hosted and preloaded by next/font. Replaces the
 // previous setup, which downloaded two Geist families that no CSS referenced
@@ -38,9 +39,6 @@ const inter = Inter({
 export const dynamic = 'force-dynamic'
 
 const SITE_NAME = ORGANISATION_NAME
-const DESCRIPTION =
-    `The official voting platform for the ${ELECTION_NAME}. Register, verify your eligibility, ` +
-    'and cast one secret ballot in your constituency.'
 
 // Absolute URLs for social/preview images. NEXT_PUBLIC_SITE_URL is the
 // canonical production domain; VERCEL_URL covers preview deployments, which
@@ -49,34 +47,72 @@ const siteUrl =
     process.env.NEXT_PUBLIC_SITE_URL ??
     (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
 
-export const metadata = {
-    metadataBase: new URL(siteUrl),
-    title: {
-        default: `${ELECTION_NAME} — Official Voting Platform`,
-        template: `%s — ${ELECTION_NAME}`,
-    },
-    description: DESCRIPTION,
-    applicationName: SITE_NAME,
-    icons: {
-        icon: [
-            { url: '/favicon.ico', sizes: 'any' },
-            { url: '/brand/icon-192.png', type: 'image/png', sizes: '192x192' },
-            { url: '/brand/icon-512.png', type: 'image/png', sizes: '512x512' },
-        ],
-        apple: [{ url: '/brand/apple-icon.png', sizes: '180x180' }],
-    },
-    manifest: '/manifest.webmanifest',
-    openGraph: {
-        title: `${ELECTION_NAME} — Official Voting Platform`,
-        description: DESCRIPTION,
-        siteName: SITE_NAME,
-        locale: 'en_GH',
-        type: 'website',
-        images: [{ url: '/brand/icon-512.png', width: 512, height: 512, alt: `${SITE_NAME} logo` }],
-    },
-    // The voter area is behind a session and holds personal data; there is
-    // nothing here that should ever appear in a search index.
-    robots: { index: false, follow: false },
+/**
+ * The election's name reaches the browser tab from the same settings row every
+ * screen reads, not from a constant.
+ *
+ * This is the last place the name was written into the source. `title.default`
+ * and `title.template` feed every page in the app — including the landing page,
+ * which sets no title of its own — so an administrator who renamed the election
+ * in Admin → Settings changed the headline of the front page while its tab, its
+ * bookmarks and its share previews went on advertising the old name.
+ *
+ * `readElection` is wrapped in React's per-request `cache`, so a page that also
+ * reads the election (the landing page and the details page both do) shares
+ * this query rather than issuing a second one. A failed read is not an error
+ * worth breaking a page over: the constant is what the platform calls an
+ * election it cannot currently look up, exactly as it is on the pages
+ * themselves.
+ */
+export async function generateMetadata() {
+    // Guarded, unlike the page-level reads. This one runs for *every* route,
+    // including the policy pages and the admin sign-in screen, none of which
+    // otherwise touch the database — and a metadata function that throws takes
+    // the whole page down with it. A deployment with no database configured
+    // must still be able to render its terms of use.
+    let electionName = ELECTION_NAME
+    try {
+        const { election } = await readElection()
+        electionName = election?.electionName ?? ELECTION_NAME
+    } catch {
+        /* fall back to the constant */
+    }
+    const title = `${electionName} — Official Voting Platform`
+    const description =
+        `The official voting platform for the ${electionName}. Register, verify your eligibility, ` +
+        'and cast one secret ballot in your constituency.'
+
+    return {
+        metadataBase: new URL(siteUrl),
+        title: {
+            default: title,
+            template: `%s — ${electionName}`,
+        },
+        description,
+        applicationName: SITE_NAME,
+        icons: {
+            icon: [
+                { url: '/favicon.ico', sizes: 'any' },
+                { url: '/brand/icon-192.png', type: 'image/png', sizes: '192x192' },
+                { url: '/brand/icon-512.png', type: 'image/png', sizes: '512x512' },
+            ],
+            apple: [{ url: '/brand/apple-icon.png', sizes: '180x180' }],
+        },
+        manifest: '/manifest.webmanifest',
+        openGraph: {
+            title,
+            description,
+            siteName: SITE_NAME,
+            locale: 'en_GH',
+            type: 'website',
+            images: [
+                { url: '/brand/icon-512.png', width: 512, height: 512, alt: `${SITE_NAME} logo` },
+            ],
+        },
+        // The voter area is behind a session and holds personal data; there is
+        // nothing here that should ever appear in a search index.
+        robots: { index: false, follow: false },
+    }
 }
 
 export const viewport = {

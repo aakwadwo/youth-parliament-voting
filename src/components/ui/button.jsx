@@ -55,6 +55,20 @@ const buttonVariants = cva(
  * `aria-busy` plus `disabled` is what actually prevents the double submission:
  * a disabled button emits no further click events, so a voter jabbing "Submit
  * my vote" on a slow connection cannot queue two ballots.
+ *
+ * There are two ways to spend the width the spinner needs, and which one a
+ * caller wants depends on whether the button carries a leading icon:
+ *
+ *   * With `pendingLabel`, both states are rendered into the same grid cell and
+ *     the idle one is hidden with `visibility` — so the button is always as wide
+ *     as the wider of "Save changes" and "⟳ Saving…", and swapping between them
+ *     moves nothing on the page. `visibility: hidden` also takes the idle layer
+ *     out of the accessibility tree, so a screen reader reads one label, not two.
+ *
+ *   * Without it, the spinner is simply prepended. A button with a leading icon
+ *     (Refresh, Sign out) should hide that icon while pending — the icon and the
+ *     spinner are both `size-4` behind the same gap, so the geometry is
+ *     identical in both states and again nothing shifts.
  */
 function Button({
   className,
@@ -70,15 +84,50 @@ function Button({
 }) {
   const Comp = asChild ? Slot.Root : "button"
 
+  const spinner = (
+    <Loader2
+      aria-hidden="true"
+      // Only animated while it is actually visible: the idle layer stays in the
+      // DOM to hold the button's width, and a permanently spinning invisible
+      // icon on every async button in the admin portal is wasted paint work.
+      className={cn("size-4 shrink-0", pending && "animate-spin")}
+    />
+  )
+
   // asChild hands rendering to the child element (a <Link>, usually), and Slot
   // accepts exactly one child — so the spinner is only ever injected for real
   // buttons. Navigation links do not have a pending state to show anyway.
-  const content = asChild ? children : (
-    <>
-      {pending ? <Loader2 aria-hidden="true" className="size-4 shrink-0 animate-spin" /> : null}
-      {pending && pendingLabel ? pendingLabel : children}
-    </>
-  )
+  let content
+  if (asChild) {
+    content = children
+  } else if (pendingLabel != null) {
+    content = (
+      <span className="grid grid-cols-1 grid-rows-1 items-center">
+        <span
+          className={cn(
+            "col-start-1 row-start-1 inline-flex items-center justify-center gap-2",
+            pending && "invisible"
+          )}>
+          {children}
+        </span>
+        <span
+          className={cn(
+            "col-start-1 row-start-1 inline-flex items-center justify-center gap-2",
+            !pending && "invisible"
+          )}>
+          {spinner}
+          {pendingLabel}
+        </span>
+      </span>
+    )
+  } else {
+    content = (
+      <>
+        {pending ? spinner : null}
+        {children}
+      </>
+    )
+  }
 
   return (
     <Comp

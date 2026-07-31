@@ -10,7 +10,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Field } from '@/components/ui/field'
 import { Alert } from '@/components/ui/alert'
 import { StatusPill } from '@/components/ui/badge'
-import { EmptyState, Spinner } from '@/components/ui/feedback'
+import { EmptyState } from '@/components/ui/feedback'
 import { DataTable } from '@/components/ui/data-table'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ConstituencyCombobox } from '@/components/ConstituencyCombobox'
@@ -296,8 +296,9 @@ export default function Candidates() {
                                 size="sm"
                                 className="mt-3"
                                 onClick={reloadCandidates}
+                                pending={loading}
                             >
-                                <RefreshCw aria-hidden="true" />
+                                {loading ? null : <RefreshCw aria-hidden="true" />}
                                 Try again
                             </Button>
                         </Alert>
@@ -501,9 +502,12 @@ export default function Candidates() {
                                 >
                                     Cancel
                                 </Button>
-                                <Button type="submit" disabled={formLoading}>
-                                    {formLoading ? <Spinner /> : null}
-                                    {formLoading ? 'Adding…' : 'Add candidate'}
+                                <Button
+                                    type="submit"
+                                    pending={formLoading}
+                                    pendingLabel="Adding…"
+                                >
+                                    Add candidate
                                 </Button>
                             </div>
                         </form>
