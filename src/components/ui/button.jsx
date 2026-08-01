@@ -42,6 +42,50 @@ const buttonVariants = cva(
   }
 )
 
+function ButtonSpinner({ pending = true }) {
+  return (
+    <Loader2
+      aria-hidden="true"
+      // Only animated while it is actually visible: the idle layer stays in the
+      // DOM to hold the button's width, and a permanently spinning invisible
+      // icon on every async button in the admin portal is wasted paint work.
+      className={cn("size-4 shrink-0", pending && "animate-spin")}
+    />
+  );
+}
+
+/**
+ * The idle label and the pending label rendered into the same grid cell, with
+ * whichever one is not current hidden by `visibility`.
+ *
+ * Exported because `asChild` buttons cannot use it through `Button` — Slot
+ * accepts exactly one child, so anything a link needs inside it has to be
+ * assembled by the caller. `NavButton` is the caller that does, and it uses
+ * this rather than its own copy so there is still one spinner treatment on the
+ * platform rather than one for actions and a second for navigation.
+ */
+function PendingSwap({ pending = false, pendingLabel, children }) {
+  return (
+    <span className="grid grid-cols-1 grid-rows-1 items-center">
+      <span
+        className={cn(
+          "col-start-1 row-start-1 inline-flex items-center justify-center gap-2",
+          pending && "invisible"
+        )}>
+        {children}
+      </span>
+      <span
+        className={cn(
+          "col-start-1 row-start-1 inline-flex items-center justify-center gap-2",
+          !pending && "invisible"
+        )}>
+        <ButtonSpinner pending={pending} />
+        {pendingLabel}
+      </span>
+    </span>
+  );
+}
+
 /**
  * `pending` is the one loading treatment used across the whole platform.
  *
@@ -84,46 +128,23 @@ function Button({
 }) {
   const Comp = asChild ? Slot.Root : "button"
 
-  const spinner = (
-    <Loader2
-      aria-hidden="true"
-      // Only animated while it is actually visible: the idle layer stays in the
-      // DOM to hold the button's width, and a permanently spinning invisible
-      // icon on every async button in the admin portal is wasted paint work.
-      className={cn("size-4 shrink-0", pending && "animate-spin")}
-    />
-  )
-
   // asChild hands rendering to the child element (a <Link>, usually), and Slot
   // accepts exactly one child — so the spinner is only ever injected for real
-  // buttons. Navigation links do not have a pending state to show anyway.
+  // buttons. A link that does have a pending state to show composes PendingSwap
+  // into its own children instead; see NavButton.
   let content
   if (asChild) {
     content = children
   } else if (pendingLabel != null) {
     content = (
-      <span className="grid grid-cols-1 grid-rows-1 items-center">
-        <span
-          className={cn(
-            "col-start-1 row-start-1 inline-flex items-center justify-center gap-2",
-            pending && "invisible"
-          )}>
-          {children}
-        </span>
-        <span
-          className={cn(
-            "col-start-1 row-start-1 inline-flex items-center justify-center gap-2",
-            !pending && "invisible"
-          )}>
-          {spinner}
-          {pendingLabel}
-        </span>
-      </span>
+      <PendingSwap pending={pending} pendingLabel={pendingLabel}>
+        {children}
+      </PendingSwap>
     )
   } else {
     content = (
       <>
-        {pending ? spinner : null}
+        {pending ? <ButtonSpinner /> : null}
         {children}
       </>
     )
@@ -147,4 +168,4 @@ function Button({
   );
 }
 
-export { Button, buttonVariants }
+export { Button, buttonVariants, PendingSwap }

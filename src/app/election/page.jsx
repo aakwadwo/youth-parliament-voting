@@ -1,6 +1,4 @@
-import Link from 'next/link'
-
-import { Button } from '@/components/ui/button'
+import { NavButton } from '@/components/NavButton'
 import { StatusPill } from '@/components/ui/badge'
 import { PageShell, PageHeading } from '@/components/layout/PageShell'
 import { ElectionWindow } from '@/components/VotingNotOpen'
@@ -78,15 +76,22 @@ export default async function ElectionDetailsPage() {
                     title="Election details"
                     description="We could not load the election details just now. Please try again shortly."
                 />
-                <Button asChild variant="outline" size="lg" className="mt-8 w-full sm:w-auto">
-                    <Link href="/">Return home</Link>
-                </Button>
+                <NavButton href="/" variant="outline" size="lg" className="mt-8 w-full sm:w-auto">
+                    Return home
+                </NavButton>
             </PageShell>
         )
     }
 
     const pill = STATUS_PILL[election.status] ?? STATUS_PILL[ELECTION_STATUS.CLOSED]
     const open = election.status === ELECTION_STATUS.OPEN
+
+    // Sign-in is only offered while it leads somewhere; otherwise the slot goes
+    // back to the landing page. One destination, one button, so the treatment
+    // cannot diverge between the two states.
+    const secondaryAction = open
+        ? { href: '/login', label: 'Sign in to vote' }
+        : { href: '/', label: 'Return home' }
 
     return (
         <PageShell width="md">
@@ -106,19 +111,17 @@ export default async function ElectionDetailsPage() {
             ) : null}
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <Button asChild size="lg" className="sm:w-auto">
-                    <Link href="/register">Register to vote</Link>
-                </Button>
-                {/* Only offered while it leads somewhere. */}
-                {open ? (
-                    <Button asChild variant="outline" size="lg" className="sm:w-auto">
-                        <Link href="/login">Sign in to vote</Link>
-                    </Button>
-                ) : (
-                    <Button asChild variant="outline" size="lg" className="sm:w-auto">
-                        <Link href="/">Return home</Link>
-                    </Button>
-                )}
+                <NavButton href="/register" size="lg" className="sm:w-auto">
+                    Register to vote
+                </NavButton>
+                <NavButton
+                    href={secondaryAction.href}
+                    variant="outline"
+                    size="lg"
+                    className="sm:w-auto"
+                >
+                    {secondaryAction.label}
+                </NavButton>
             </div>
 
             <p className="mt-8 text-sm leading-relaxed text-muted-foreground">

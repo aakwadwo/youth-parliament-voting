@@ -1,6 +1,4 @@
-import Link from 'next/link'
-
-import { Button } from '@/components/ui/button'
+import { NavButton } from '@/components/NavButton'
 import { TricolourRule } from '@/components/brand/BrandMark'
 import { SiteHeader, SiteFooter } from '@/components/layout/PageShell'
 import { ElectionStatusPanel } from '@/components/ElectionStatusBanner'
@@ -53,6 +51,19 @@ export default async function Home() {
     const { election } = await readElection()
     const electionName = election?.electionName ?? ELECTION_NAME
 
+    // Sign-in only leads anywhere while the poll is open, so it is not offered
+    // as a primary action otherwise. Registration stays available throughout:
+    // the register is open before the poll, and someone arriving after it
+    // closes is told so plainly rather than finding a button that fails.
+    //
+    // Resolved to one destination rather than branching over two buttons in the
+    // markup, so the second slot cannot end up with a different treatment from
+    // the first depending on the state of the election.
+    const secondaryAction =
+        election?.status === ELECTION_STATUS.OPEN || !election
+            ? { href: '/login', label: 'Sign in to vote' }
+            : { href: '/election', label: 'View election details' }
+
     return (
         <div className="flex min-h-dvh flex-col bg-background">
             <TricolourRule />
@@ -76,24 +87,12 @@ export default async function Home() {
                     <ElectionStatusPanel initial={election} className="mt-8" />
 
                     <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                        <Button asChild size="xl">
-                            <Link href="/register">Register to vote</Link>
-                        </Button>
-                        {/* Sign-in only leads anywhere while the poll is open,
-                            so it is not offered as a primary action otherwise.
-                            Registration stays available throughout: the
-                            register is open before the poll, and someone
-                            arriving after it closes is told so plainly rather
-                            than finding a button that fails. */}
-                        {election?.status === ELECTION_STATUS.OPEN || !election ? (
-                            <Button asChild variant="outline" size="xl">
-                                <Link href="/login">Sign in to vote</Link>
-                            </Button>
-                        ) : (
-                            <Button asChild variant="outline" size="xl">
-                                <Link href="/election">View election details</Link>
-                            </Button>
-                        )}
+                        <NavButton href="/register" size="xl">
+                            Register to vote
+                        </NavButton>
+                        <NavButton href={secondaryAction.href} variant="outline" size="xl">
+                            {secondaryAction.label}
+                        </NavButton>
                     </div>
 
                     <div className="mt-10 max-w-2xl space-y-8 border-t border-border pt-8 sm:mt-12 sm:pt-10">
