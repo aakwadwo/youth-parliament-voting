@@ -21,6 +21,7 @@ export const AUDIT_ACTIONS = {
     CONSTITUENCY_CREATED: 'constituency_created',
     CONSTITUENCY_IMPORTED: 'constituency_imported',
     RESULTS_EXPORTED: 'results_exported',
+    CANDIDATE_LIST_EXPORTED: 'candidate_list_exported',
 }
 
 export async function logAdminAction(supabase, action, { actor, ip, entity, ...details } = {}) {

@@ -36,12 +36,18 @@ const nextConfig = {
     // 500 in a production build while Excel and CSV, which touch no fonts,
     // succeeded. Keeping pdfkit out of the bundle leaves it a plain node_modules
     // require with a real __dirname.
-    serverExternalPackages: ['pdfkit'],
+    // sharp is a native module and must not be bundled either. It is already
+    // present as Next's own optional dependency (the image optimizer uses it);
+    // package.json now depends on it explicitly, because the candidate register
+    // export downscales photographs with it and a transitive optional
+    // dependency is not something an export route should be resting on.
+    serverExternalPackages: ['pdfkit', 'sharp'],
 
     // Belt and braces for serverless: the metrics live in a directory nothing
     // statically imports, so file tracing has to be told to ship them.
     outputFileTracingIncludes: {
         '/api/admin/results/export': ['./node_modules/pdfkit/js/data/**'],
+        '/api/admin/candidates/export': ['./node_modules/pdfkit/js/data/**'],
     },
 
     experimental: {

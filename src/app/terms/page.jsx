@@ -1,7 +1,7 @@
 import { PageShell, PageHeading } from '@/components/layout/PageShell'
 import { Prose, LastUpdated } from '@/components/layout/Prose'
 import { MIN_AGE, MAX_AGE } from '@/lib/validation'
-import { ELECTORAL_COMMISSION } from '@/lib/election'
+import { ELECTORAL_COMMISSION, CONTACT_EMAIL } from '@/lib/election'
 
 export const metadata = {
     title: 'Terms of use',
@@ -124,9 +124,7 @@ export default function TermsPage() {
                 <h2>Contact</h2>
                 <p>
                     Questions about these terms go to{' '}
-                    <a href="mailto:aakwadwo1@gmail.com">
-                        aakwadwo1@gmail.com
-                    </a>
+                    <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
                     .
                 </p>
             </Prose>

@@ -39,6 +39,42 @@ const REGIONS = [
 
 const TOTAL_BALLOTS = RESULTS.reduce((sum, r) => sum + r.votes, 0) // 140
 
+/**
+ * The `candidates` table behind the same fixture election.
+ *
+ * Derived from RESULTS so the register and the results can never describe two
+ * different fields of candidates, plus the cases the register has to survive
+ * and the results do not: a candidate with no photograph at all, and one whose
+ * constituency row has been deleted from under them.
+ */
+const CANDIDATES = [
+    ...RESULTS.map((r, i) => ({
+        id: r.candidate_id,
+        full_name: r.candidate_name,
+        constituency_id: r.constituency_id,
+        // Every other candidate has a photograph, so both branches are covered.
+        photo_url:
+            i % 2 === 0
+                ? `https://fixture.supabase.co/storage/v1/object/public/candidate-photos/${r.candidate_id}.jpg`
+                : null,
+        is_active: r.is_active,
+    })),
+    {
+        id: 'd8',
+        full_name: 'Orphaned Candidate',
+        constituency_id: 'deleted-constituency',
+        photo_url: null,
+        is_active: true,
+    },
+]
+
+// A constituency nobody is standing in — the exact thing a register review is
+// meant to catch, and the exact thing a results export never shows.
+const REGISTER_CONSTITUENCIES = [
+    ...CONSTITUENCIES,
+    { id: 'c4', name: 'Nobody Standing', region: 'Ahafo', code: 4 },
+]
+
 export function makeFakeSupabase({ votedOverride = null, settings = {} } = {}) {
     const stats = {
         total_registered: 370,
@@ -61,22 +97,41 @@ export function makeFakeSupabase({ votedOverride = null, settings = {} } = {}) {
         get_regional_turnout: REGIONS,
     }
 
+    const electionSettings = {
+        id: 'settings-1',
+        election_name: 'Test Election 2026',
+        description: 'A fixture election.',
+        is_active: false,
+        voting_opens_at: '2026-07-20T08:00:00.000Z',
+        voting_closes_at: '2026-07-24T18:00:00.000Z',
+        ...settings,
+    }
+
+    const TABLES = {
+        constituencies: REGISTER_CONSTITUENCIES,
+        candidates: CANDIDATES,
+    }
+
     return {
-        from: () => ({
-            select: () => ({
-                maybeSingle: async () => ({
-                    data: {
-                        id: 'settings-1',
-                        election_name: 'Test Election 2026',
-                        description: 'A fixture election.',
-                        is_active: false,
-                        voting_opens_at: '2026-07-20T08:00:00.000Z',
-                        voting_closes_at: '2026-07-24T18:00:00.000Z',
-                        ...settings,
-                    },
-                    error: null,
-                }),
-            }),
+        from: (table) => ({
+            select: () => {
+                const rows = TABLES[table] ?? []
+                // PostgREST builders are thenable and chainable; only the two
+                // shapes the code under test actually uses are modelled —
+                // `.maybeSingle()` for the settings row and `.order(column)`
+                // for a list. `.order()` sorts, because the ordering the
+                // register relies on is part of what is being tested.
+                const result = {
+                    maybeSingle: async () => ({ data: electionSettings, error: null }),
+                    order: async (column) => ({
+                        data: rows
+                            .slice()
+                            .sort((a, b) => String(a[column]).localeCompare(String(b[column]))),
+                        error: null,
+                    }),
+                }
+                return result
+            },
         }),
         rpc: async (name) => ({ data: RPC[name] ?? [], error: null }),
     }

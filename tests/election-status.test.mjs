@@ -13,6 +13,7 @@ import {
     ELECTION_STATUS_TONE,
     formatDateLong,
     formatDateTimeLong,
+    electionActions,
 } from '@/lib/election-status'
 
 const NOW = Date.parse('2026-08-10T12:00:00Z')
@@ -319,5 +320,63 @@ test('missing and malformed values format to empty, never to "Invalid Date"', ()
     for (const bad of [null, undefined, '', 'not-a-date', '2004-13-45', {}]) {
         assert.equal(formatDateLong(bad), '', `formatDateLong(${JSON.stringify(bad)})`)
         assert.equal(formatDateTimeLong(bad), '', `formatDateTimeLong(${JSON.stringify(bad)})`)
+    }
+})
+
+// --------------------------------------------------------------------------
+// What the platform offers a visitor to do
+// --------------------------------------------------------------------------
+
+test('an open poll offers registering and signing in, and nothing else', () => {
+    assert.deepEqual(electionActions(ELECTION_STATUS.OPEN), [
+        { href: '/register', label: 'Register to vote' },
+        { href: '/login', label: 'Sign in to vote' },
+    ])
+})
+
+test('before a poll opens, sign-in is not offered at all', () => {
+    // /api/login refuses outside the window before it even checks credentials,
+    // so offering it here would be a button whose only destination is a
+    // refusal screen. The register genuinely is open, so that stays.
+    for (const status of [ELECTION_STATUS.SCHEDULED, ELECTION_STATUS.CLOSED]) {
+        assert.deepEqual(
+            electionActions(status),
+            [
+                { href: '/register', label: 'Register to vote' },
+                { href: '/election', label: 'View election details' },
+            ],
+            status
+        )
+    }
+})
+
+test('once voting has ended, the only action offered is the result', () => {
+    const actions = electionActions(ELECTION_STATUS.ENDED)
+
+    assert.deepEqual(actions, [{ href: '/results', label: 'View election results' }])
+
+    // Specifically: neither of the two actions that now lead to a refusal.
+    assert.equal(
+        actions.some((a) => a.href === '/register' || a.href === '/login'),
+        false,
+        'a dead-end voting action survived past the close of the poll'
+    )
+})
+
+test('no state offers more than two actions', () => {
+    for (const status of Object.values(ELECTION_STATUS)) {
+        assert.ok(
+            electionActions(status).length <= 2,
+            `${status} offers ${electionActions(status).length} actions`
+        )
+    }
+})
+
+test('an unreadable election falls back to the open set rather than nothing', () => {
+    // A page with no call to action at all is a worse failure than one whose
+    // buttons lead to a screen explaining the position — and the routes behind
+    // them gate themselves regardless.
+    for (const missing of [null, undefined]) {
+        assert.deepEqual(electionActions(missing), electionActions(ELECTION_STATUS.OPEN))
     }
 })

@@ -4,7 +4,12 @@ import { PageShell, PageHeading } from '@/components/layout/PageShell'
 import { ElectionWindow } from '@/components/VotingNotOpen'
 import { Prose } from '@/components/layout/Prose'
 import { readElection } from '@/lib/election-server'
-import { ELECTION_STATUS, ELECTION_STATUS_TONE, formatWhen } from '@/lib/election-status'
+import {
+    ELECTION_STATUS,
+    ELECTION_STATUS_TONE,
+    electionActions,
+    formatWhen,
+} from '@/lib/election-status'
 import { ELECTION_NAME, ELECTORAL_COMMISSION } from '@/lib/election'
 
 /**
@@ -84,14 +89,18 @@ export default async function ElectionDetailsPage() {
     }
 
     const pill = STATUS_PILL[election.status] ?? STATUS_PILL[ELECTION_STATUS.CLOSED]
-    const open = election.status === ELECTION_STATUS.OPEN
 
-    // Sign-in is only offered while it leads somewhere; otherwise the slot goes
-    // back to the landing page. One destination, one button, so the treatment
-    // cannot diverge between the two states.
-    const secondaryAction = open
-        ? { href: '/login', label: 'Sign in to vote' }
-        : { href: '/', label: 'Return home' }
+    // The same actions the landing page offers, from the same function, so the
+    // two screens cannot end up disagreeing about what a voter may do — which
+    // is exactly what happened when each decided for itself.
+    //
+    // The one adjustment is local: this page is `/election`, so the scheduled
+    // state's "View election details" would be a button that reloads the page
+    // the reader is already on. It becomes the way back instead. Nothing is
+    // added, and no state gains a third button.
+    const actions = electionActions(election.status).map((action) =>
+        action.href === '/election' ? { href: '/', label: 'Return home' } : action
+    )
 
     return (
         <PageShell width="md">
@@ -111,17 +120,17 @@ export default async function ElectionDetailsPage() {
             ) : null}
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                <NavButton href="/register" size="lg" className="sm:w-auto">
-                    Register to vote
-                </NavButton>
-                <NavButton
-                    href={secondaryAction.href}
-                    variant="outline"
-                    size="lg"
-                    className="sm:w-auto"
-                >
-                    {secondaryAction.label}
-                </NavButton>
+                {actions.map((action, i) => (
+                    <NavButton
+                        key={action.href}
+                        href={action.href}
+                        variant={i === 0 ? 'default' : 'outline'}
+                        size="lg"
+                        className="sm:w-auto"
+                    >
+                        {action.label}
+                    </NavButton>
+                ))}
             </div>
 
             <p className="mt-8 text-sm leading-relaxed text-muted-foreground">

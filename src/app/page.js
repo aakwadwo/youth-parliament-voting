@@ -3,9 +3,9 @@ import { TricolourRule } from '@/components/brand/BrandMark'
 import { SiteHeader, SiteFooter } from '@/components/layout/PageShell'
 import { ElectionStatusPanel } from '@/components/ElectionStatusBanner'
 import { MIN_AGE, MAX_AGE } from '@/lib/validation'
-import { ELECTION_NAME } from '@/lib/election'
+import { ELECTION_NAME, CONTACT_EMAIL, CONTACT_PHONE_DISPLAY, CONTACT_PHONE_TEL } from '@/lib/election'
 import { readElection } from '@/lib/election-server'
-import { ELECTION_STATUS } from '@/lib/election-status'
+import { electionActions } from '@/lib/election-status'
 
 // Re-read at most every 15 seconds. The front page takes the traffic spike when
 // a poll opens, so it must stay cacheable, but a cached copy that outlives the
@@ -51,18 +51,16 @@ export default async function Home() {
     const { election } = await readElection()
     const electionName = election?.electionName ?? ELECTION_NAME
 
-    // Sign-in only leads anywhere while the poll is open, so it is not offered
-    // as a primary action otherwise. Registration stays available throughout:
-    // the register is open before the poll, and someone arriving after it
-    // closes is told so plainly rather than finding a button that fails.
+    // The whole call to action, resolved from the election's state in one
+    // place. The page renders whatever this list holds and makes no decisions
+    // of its own, so the front door cannot end up offering an action the
+    // election does not currently support.
     //
-    // Resolved to one destination rather than branching over two buttons in the
-    // markup, so the second slot cannot end up with a different treatment from
-    // the first depending on the state of the election.
-    const secondaryAction =
-        election?.status === ELECTION_STATUS.OPEN || !election
-            ? { href: '/login', label: 'Sign in to vote' }
-            : { href: '/election', label: 'View election details' }
+    // Once voting has ended there is exactly one thing left to do here, and it
+    // is not registering or signing in — both of those now lead to a refusal
+    // screen. The single slot is given to the result rather than adding a third
+    // button beside two dead ends.
+    const actions = electionActions(election?.status)
 
     return (
         <div className="flex min-h-dvh flex-col bg-background">
@@ -87,12 +85,20 @@ export default async function Home() {
                     <ElectionStatusPanel initial={election} className="mt-8" />
 
                     <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-                        <NavButton href="/register" size="xl">
-                            Register to vote
-                        </NavButton>
-                        <NavButton href={secondaryAction.href} variant="outline" size="xl">
-                            {secondaryAction.label}
-                        </NavButton>
+                        {actions.map((action, i) => (
+                            <NavButton
+                                key={action.href}
+                                href={action.href}
+                                // The first action is the primary one whatever
+                                // it happens to be, so a state with one action
+                                // still gets a filled button rather than an
+                                // outlined one floating on its own.
+                                variant={i === 0 ? 'default' : 'outline'}
+                                size="xl"
+                            >
+                                {action.label}
+                            </NavButton>
+                        ))}
                     </div>
 
                     <div className="mt-10 max-w-2xl space-y-8 border-t border-border pt-8 sm:mt-12 sm:pt-10">
@@ -119,10 +125,10 @@ export default async function Home() {
                             <p className="mt-2 leading-relaxed text-muted-foreground">
                                 Contact the Electoral Commission on{' '}
                                 <a
-                                    href="tel:+233542298375"
-                                    className="font-medium text-primary underline underline-offset-4"
+                                    href={`tel:${CONTACT_PHONE_TEL}`}
+                                    className="numeric font-medium text-primary underline underline-offset-4"
                                 >
-                                    +233 54 229 8375
+                                    {CONTACT_PHONE_DISPLAY}
                                 </a>{' '}
                                 or{' '}
                                 {/* Clears a 320px line by ~2px with the system
@@ -130,10 +136,10 @@ export default async function Home() {
                                     rather than leave the front door of the
                                     service one metric change from overflowing. */}
                                 <a
-                                    href="mailto:aakwadwo1@gmail.com"
+                                    href={`mailto:${CONTACT_EMAIL}`}
                                     className="font-medium text-primary underline underline-offset-4 [overflow-wrap:anywhere]"
                                 >
-                                    aakwadwo1@gmail.com
+                                    {CONTACT_EMAIL}
                                 </a>
                                 .
                             </p>

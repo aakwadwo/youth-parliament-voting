@@ -11,19 +11,7 @@
  */
 
 import { ELECTION_NAME } from '@/lib/election'
-
-/** A tie is a genuine election outcome, so winners is a list, not a value. */
-function resolveWinners(candidates) {
-    const contested = candidates.filter((c) => c.votes > 0)
-    if (contested.length === 0) return []
-    const top = Math.max(...contested.map((c) => c.votes))
-    return contested.filter((c) => c.votes === top)
-}
-
-function percent(part, whole) {
-    if (!whole) return 0
-    return Math.round((part / whole) * 1000) / 10
-}
+import { resolveWinners, percent } from '@/lib/results-math'
 
 /**
  * Fetches and shapes the complete report.

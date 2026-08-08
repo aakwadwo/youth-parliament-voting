@@ -1,5 +1,6 @@
 import { PageShell, PageHeading } from '@/components/layout/PageShell'
 import { Prose, LastUpdated } from '@/components/layout/Prose'
+import { CONTACT_EMAIL } from '@/lib/election'
 
 export const metadata = {
     title: 'Accessibility statement',
@@ -82,9 +83,7 @@ export default function AccessibilityPage() {
                 <h2>Reporting a problem</h2>
                 <p>
                     If you find something you cannot use, tell us at{' '}
-                    <a href="mailto:aakwadwo1@gmail.com">
-                        aakwadwo1@gmail.com
-                    </a>
+                    <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
                     . Include the page and what happened. We reply within five working days, and
                     treat anything that blocks a person from voting as urgent.
                 </p>

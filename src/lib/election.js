@@ -37,3 +37,21 @@ export const TECHNOLOGY_PROVIDER_URL = 'https://www.linkedin.com/company/kas-mav
 
 /** Short form for the site masthead, where the full name does not fit. */
 export const ORGANISATION_SHORT_NAME = 'Youth Parliament Ghana'
+
+/**
+ * The Commission's public contact details.
+ *
+ * Written out at each of the ten places that needed them — the landing page,
+ * four sections of the contact page, the privacy notice, the terms, the
+ * accessibility statement — which is how a change of number left the site
+ * quoting two different ones depending on which page a voter happened to read.
+ * These are the details a voter uses to dispute a registration or report a
+ * vulnerability; they cannot be allowed to drift.
+ *
+ * The number is displayed in the national form people actually read out loud,
+ * and linked in international form so a tel: link works from any handset,
+ * roaming or not. They are the same number.
+ */
+export const CONTACT_EMAIL = 'aakwadwo1@gmail.com'
+export const CONTACT_PHONE_DISPLAY = '054-229-8375'
+export const CONTACT_PHONE_TEL = '+233542298375'

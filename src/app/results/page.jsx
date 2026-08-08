@@ -1,0 +1,322 @@
+import { NavButton } from '@/components/NavButton'
+import { PageShell, PageHeading } from '@/components/layout/PageShell'
+import { StatusPill, Badge } from '@/components/ui/badge'
+import { VoteBar, EmptyState } from '@/components/ui/feedback'
+import { ElectionWindow } from '@/components/VotingNotOpen'
+import { createAdminClient } from '@/lib/supabase-admin'
+import { readElection } from '@/lib/election-server'
+import { buildPublicResults } from '@/lib/public-results'
+import {
+    ELECTION_STATUS,
+    areResultsPublic,
+    resultsUnavailableMessage,
+    formatDateTimeLong,
+} from '@/lib/election-status'
+import { ELECTION_NAME, ELECTORAL_COMMISSION } from '@/lib/election'
+
+/**
+ * The public declaration of the result.
+ *
+ * Open to anyone. No voter session, no phone number, no date of birth, no age
+ * check — a result nobody can read without first proving who they are is not a
+ * published result. The one thing that gates this page is the election's own
+ * state, read from the same admin settings row every other screen reads.
+ *
+ * Rendered entirely on the server. There is no `/api/results` behind it and no
+ * client component receiving the tallies as props, so the only thing that ever
+ * leaves the server is the markup below — which is the simplest possible answer
+ * to "could this endpoint leak something it should not". What it renders comes
+ * from `buildPublicResults`, which reads one aggregate function and emits an
+ * explicit object literal containing names, counts and shares.
+ *
+ * Nothing here can identify a voter, and that is a property of the schema
+ * rather than of this page: `votes` rows carry no voter reference at all.
+ */
+
+const nf = new Intl.NumberFormat('en-GB')
+
+export async function generateMetadata() {
+    const { election } = await readElection()
+    const name = election?.electionName ?? ELECTION_NAME
+    return {
+        title: 'Election results',
+        description: `Constituency-by-constituency results for the ${name}.`,
+    }
+}
+
+/** The screen shown whenever the result may not be published yet. */
+function ResultsUnavailable({ election, status }) {
+    const message = resultsUnavailableMessage(status)
+
+    return (
+        <PageShell width="md">
+            <PageHeading title="Election results" description={message.detail} />
+
+            <div className="mt-6">
+                <StatusPill variant="neutral">{message.title}</StatusPill>
+            </div>
+
+            <ElectionWindow election={election} />
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <NavButton href="/election" size="lg" className="sm:w-auto">
+                    View election details
+                </NavButton>
+                <NavButton href="/" variant="outline" size="lg" className="sm:w-auto">
+                    Return home
+                </NavButton>
+            </div>
+
+            <p className="mt-8 text-sm leading-relaxed text-muted-foreground">
+                Results are published by the {ELECTORAL_COMMISSION} once voting has closed. This
+                page does not require you to sign in.
+            </p>
+        </PageShell>
+    )
+}
+
+function ConstituencyResult({ constituency }) {
+    // Bars are scaled to the leading tally rather than to 100%, so a seat won
+    // on 38% still reads as a clear lead rather than a third of an empty
+    // track. The percentage beside each row carries the absolute share.
+    const leading = constituency.candidates[0]?.votes ?? 0
+
+    return (
+        <section
+            aria-labelledby={`h-${constituency.key}`}
+            className="overflow-hidden rounded-xl border border-border bg-card"
+        >
+            <div className="flex flex-col gap-2 border-b border-border px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
+                <div className="min-w-0">
+                    <h3 id={`h-${constituency.key}`} className="font-semibold">
+                        {constituency.name}
+                    </h3>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                        <span className="numeric">{nf.format(constituency.totalVotes)}</span>{' '}
+                        {constituency.totalVotes === 1 ? 'vote' : 'votes'} counted
+                    </p>
+                </div>
+                {constituency.totalVotes === 0 ? (
+                    <Badge variant="neutral">No votes cast</Badge>
+                ) : constituency.tied ? (
+                    <Badge variant="warning">Tied</Badge>
+                ) : (
+                    <Badge variant="success">Declared</Badge>
+                )}
+            </div>
+
+            {constituency.candidates.length === 0 ? (
+                <EmptyState
+                    title="No candidates stood"
+                    description="Nobody was registered as a candidate in this constituency."
+                />
+            ) : constituency.totalVotes === 0 ? (
+                <>
+                    <p className="border-b border-border px-4 py-3 text-sm leading-relaxed text-muted-foreground sm:px-5">
+                        No votes were recorded in this constituency, so no candidate has been
+                        elected. Everyone who stood is listed below.
+                    </p>
+                    <ul className="divide-y divide-border">
+                        {constituency.candidates.map((candidate) => (
+                            <li
+                                key={candidate.key}
+                                className="flex items-baseline justify-between gap-3 px-4 py-3 sm:px-5"
+                            >
+                                <span className="min-w-0 truncate font-medium">
+                                    {candidate.name}
+                                </span>
+                                <span className="numeric shrink-0 text-sm text-muted-foreground">
+                                    0 votes
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                </>
+            ) : (
+                <ul className="divide-y divide-border">
+                    {constituency.candidates.map((candidate) => (
+                        <li key={candidate.key} className="px-4 py-3.5 sm:px-5">
+                            <div className="flex items-baseline justify-between gap-3">
+                                <span className="flex min-w-0 items-center gap-2">
+                                    {/* The trophy is decorative; "Winner" or
+                                        "Tied" is always present as text, so the
+                                        outcome never depends on an emoji
+                                        rendering or on colour. */}
+                                    {candidate.isWinner ? (
+                                        <span aria-hidden="true" className="shrink-0">
+                                            🏆
+                                        </span>
+                                    ) : null}
+                                    <span
+                                        className={`truncate ${candidate.isWinner ? 'font-semibold' : 'font-medium'}`}
+                                    >
+                                        {candidate.name}
+                                    </span>
+                                    {candidate.isWinner ? (
+                                        <Badge variant="success">
+                                            {constituency.tied ? 'Tied' : 'Winner'}
+                                        </Badge>
+                                    ) : null}
+                                    {!candidate.isActive ? (
+                                        <Badge variant="neutral">Withdrawn</Badge>
+                                    ) : null}
+                                </span>
+                                <span className="numeric shrink-0 text-sm text-muted-foreground">
+                                    {nf.format(candidate.votes)}{' '}
+                                    {candidate.votes === 1 ? 'vote' : 'votes'} ·{' '}
+                                    {candidate.sharePct}%
+                                </span>
+                            </div>
+                            <VoteBar
+                                className="mt-2"
+                                value={candidate.votes}
+                                max={Math.max(1, leading)}
+                                tone={candidate.isWinner ? 'brand' : 'muted'}
+                                label={`${candidate.name}: ${candidate.votes} votes, ${candidate.sharePct}% of votes cast in ${constituency.name}`}
+                            />
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </section>
+    )
+}
+
+export default async function ResultsPage() {
+    const { election, error } = await readElection()
+
+    // Fails closed. An election whose state cannot be read is not an election
+    // whose results may be published.
+    if (error || !election) {
+        return <ResultsUnavailable election={null} status={ELECTION_STATUS.CLOSED} />
+    }
+
+    if (!areResultsPublic(election.status)) {
+        return <ResultsUnavailable election={election} status={election.status} />
+    }
+
+    let results
+    try {
+        results = await buildPublicResults(createAdminClient(), election)
+    } catch (err) {
+        console.error('[results] failed to build public results', err)
+        return (
+            <PageShell width="lg">
+                <PageHeading
+                    title="Election results"
+                    description="We could not load the results just now. Please try again shortly."
+                />
+                <NavButton href="/" variant="outline" size="lg" className="mt-8 sm:w-auto">
+                    Return home
+                </NavButton>
+            </PageShell>
+        )
+    }
+
+    const { summary } = results
+    const nothingCounted = summary.totalVotes === 0
+
+    return (
+        <PageShell width="lg">
+            <PageHeading
+                title="Election results"
+                description={`Final results for the ${results.electionName ?? ELECTION_NAME}, by region and constituency.`}
+            />
+
+            <div className="mt-6">
+                <StatusPill variant="neutral">Voting has ended</StatusPill>
+            </div>
+
+            <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-4">
+                {[
+                    ['Votes counted', nf.format(summary.totalVotes)],
+                    ['Constituencies', nf.format(summary.totalConstituencies)],
+                    ['Seats declared', nf.format(summary.declaredConstituencies)],
+                    ['Regions', nf.format(summary.totalRegions)],
+                ].map(([label, value]) => (
+                    <div key={label} className="bg-card px-4 py-3">
+                        <dt className="text-xs text-muted-foreground">{label}</dt>
+                        <dd className="numeric mt-0.5 text-lg font-semibold">{value}</dd>
+                    </div>
+                ))}
+            </dl>
+
+            {summary.tiedConstituencies > 0 ? (
+                <p className="mt-4 rounded-lg border border-warning-border bg-warning-surface p-3 text-sm leading-relaxed text-warning-foreground">
+                    {summary.tiedConstituencies === 1
+                        ? 'One constituency is tied on the highest number of votes.'
+                        : `${summary.tiedConstituencies} constituencies are tied on the highest number of votes.`}{' '}
+                    Every candidate on the leading tally is shown as tied; the {ELECTORAL_COMMISSION}{' '}
+                    decides how a tie is resolved.
+                </p>
+            ) : null}
+
+            {results.regions.length === 0 || nothingCounted ? (
+                <div className="mt-6 rounded-xl border border-border bg-card">
+                    <EmptyState
+                        title="No votes were recorded"
+                        description="Voting has closed and no ballots were counted, so no candidate has been elected."
+                    />
+                </div>
+            ) : null}
+
+            <div className="mt-10 space-y-10">
+                {results.regions.map((region) => (
+                    <section key={region.key} aria-labelledby={`h-${region.key}`}>
+                        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-border pb-2">
+                            <h2 id={`h-${region.key}`} className="text-heading font-semibold">
+                                {region.region}
+                            </h2>
+                            <p className="text-sm text-muted-foreground">
+                                <span className="numeric">{nf.format(region.totalVotes)}</span>{' '}
+                                {region.totalVotes === 1 ? 'vote' : 'votes'} across{' '}
+                                <span className="numeric">{region.constituencies.length}</span>{' '}
+                                {region.constituencies.length === 1
+                                    ? 'constituency'
+                                    : 'constituencies'}
+                            </p>
+                        </div>
+
+                        <div className="mt-4 space-y-4">
+                            {region.constituencies.map((constituency) => (
+                                <ConstituencyResult
+                                    key={constituency.key}
+                                    constituency={constituency}
+                                />
+                            ))}
+                        </div>
+                    </section>
+                ))}
+            </div>
+
+            <div className="mt-12 border-t border-border pt-6">
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                    Percentages are each candidate&rsquo;s share of the votes counted in their own
+                    constituency, rounded to one decimal place, so they may not total exactly 100%.
+                    Candidates who received no votes are listed with a nil tally rather than
+                    omitted.
+                </p>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                    These are aggregate totals only. Ballots are anonymous: no record in this
+                    system links a vote to the person who cast it, so this page can state how many
+                    votes each candidate received but never who voted for them.
+                </p>
+                {results.closedAt ? (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                        Voting closed {formatDateTimeLong(results.closedAt)}. Published by the{' '}
+                        {ELECTORAL_COMMISSION}.
+                    </p>
+                ) : null}
+            </div>
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <NavButton href="/election" variant="outline" size="lg" className="sm:w-auto">
+                    View election details
+                </NavButton>
+                <NavButton href="/" variant="outline" size="lg" className="sm:w-auto">
+                    Return home
+                </NavButton>
+            </div>
+        </PageShell>
+    )
+}

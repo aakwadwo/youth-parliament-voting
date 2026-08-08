@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Image from 'next/image'
-import { Plus, ArrowLeft, Search, RefreshCw } from 'lucide-react'
+import { Plus, ArrowLeft, Search, RefreshCw, FileDown } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,6 +16,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ConstituencyCombobox } from '@/components/ConstituencyCombobox'
 import { SectionHeader } from '@/components/admin/SectionHeader'
 import { useFetch } from '@/lib/useFetch'
+import { downloadExport } from '@/lib/download'
 import { isValidName } from '@/lib/validation'
 
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024
@@ -54,6 +55,28 @@ export default function Candidates() {
     const [successMessage, setSuccessMessage] = useState('')
     const [pendingToggle, setPendingToggle] = useState(null)
     const [toggling, setToggling] = useState(false)
+    const [downloadingList, setDownloadingList] = useState(false)
+    // Its own error rather than the list's: "could not load candidates", with a
+    // reload button beside it, is the wrong thing to say when the candidates
+    // loaded perfectly well and it was the PDF that failed.
+    const [downloadError, setDownloadError] = useState('')
+
+    /**
+     * The register PDF is built from the database, not from the rows currently
+     * in this table — the table paginates and filters in the browser, and a
+     * register that only contained the page an administrator happened to be
+     * looking at would be silently wrong in the one way that matters.
+     */
+    async function handleDownloadList() {
+        setDownloadingList(true)
+        setDownloadError('')
+        const result = await downloadExport(
+            '/api/admin/candidates/export?format=pdf',
+            'candidate-list.pdf'
+        )
+        if (!result.ok) setDownloadError(result.error)
+        setDownloadingList(false)
+    }
 
     function handlePhotoChange(event) {
         const file = event.target.files?.[0]
@@ -261,10 +284,26 @@ export default function Candidates() {
                 description={`${candidates.length} on file · ${activeCount} standing`}
                 actions={
                     view === 'list' ? (
-                        <Button onClick={() => setView('add')}>
-                            <Plus aria-hidden="true" />
-                            Add candidate
-                        </Button>
+                        <>
+                            {/* Sits beside the candidate list rather than only
+                                under Reports, because this is the screen an
+                                administrator is on when they decide they want
+                                the register on paper. */}
+                            <Button
+                                variant="outline"
+                                onClick={handleDownloadList}
+                                disabled={candidates.length === 0}
+                                pending={downloadingList}
+                                pendingLabel="Building…"
+                            >
+                                {downloadingList ? null : <FileDown aria-hidden="true" />}
+                                Download list (PDF)
+                            </Button>
+                            <Button onClick={() => setView('add')}>
+                                <Plus aria-hidden="true" />
+                                Add candidate
+                            </Button>
+                        </>
                     ) : (
                         <Button
                             variant="outline"
@@ -283,6 +322,12 @@ export default function Candidates() {
             {successMessage ? (
                 <Alert variant="success" title="Saved">
                     {successMessage}
+                </Alert>
+            ) : null}
+
+            {downloadError ? (
+                <Alert variant="danger" title="Download failed">
+                    {downloadError}
                 </Alert>
             ) : null}
 

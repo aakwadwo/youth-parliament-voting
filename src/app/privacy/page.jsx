@@ -1,6 +1,7 @@
 import { PageShell, PageHeading } from '@/components/layout/PageShell'
 import { Prose, LastUpdated } from '@/components/layout/Prose'
 import { MIN_AGE, MAX_AGE } from '@/lib/validation'
+import { CONTACT_EMAIL } from '@/lib/election'
 
 export const metadata = {
     title: 'Privacy notice',
@@ -93,9 +94,7 @@ export default function PrivacyPage() {
                 </p>
                 <p>
                     Write to{' '}
-                    <a href="mailto:aakwadwo1@gmail.com">
-                        aakwadwo1@gmail.com
-                    </a>
+                    <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
                     . We respond within 30 days. If you are not satisfied, you can complain to the
                     Data Protection Commission of Ghana.
                 </p>

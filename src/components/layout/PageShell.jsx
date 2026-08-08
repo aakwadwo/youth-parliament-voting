@@ -12,6 +12,12 @@ import {
 } from '@/lib/election'
 
 const FOOTER_LINKS = [
+    // Results sit first because they are the one thing on this list a member of
+    // the public actively comes looking for, and they must be findable from
+    // every page without signing in. The destination is state-aware: before and
+    // during the poll it explains when results will appear rather than showing
+    // a count.
+    { href: '/results', label: 'Results' },
     { href: '/privacy', label: 'Privacy' },
     { href: '/terms', label: 'Terms of use' },
     { href: '/accessibility', label: 'Accessibility' },

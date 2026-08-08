@@ -1,8 +1,19 @@
-import path from 'node:path'
 import PDFDocument from 'pdfkit'
 
 import { formatDateTime } from '@/lib/election-report'
 import { ORGANISATION_NAME } from '@/lib/election'
+import {
+    BRAND,
+    PAGE,
+    LOGO_PATH,
+    contentWidth,
+    tricolour,
+    sectionHeading,
+    ensureSpace,
+    drawTable,
+    paginate,
+    renderDocument,
+} from '@/lib/export/pdf-common'
 
 /**
  * The official election report, as a branded PDF.
@@ -12,55 +23,10 @@ import { ORGANISATION_NAME } from '@/lib/election'
  * then summary figures, a regional turnout chart, and the full per-constituency
  * declaration with each winner named.
  *
- * Colours are the logo's own, sampled from public/ypg.jpg.
+ * The palette, the tricolour rule, the section heading, the table and the
+ * running footer are shared with every other document the platform issues; see
+ * `@/lib/export/pdf-common`.
  */
-
-const BRAND = {
-    green: '#187B28',
-    greenDark: '#0F5C1D',
-    greenLight: '#E7F3EA',
-    gold: '#F9C50F',
-    red: '#DC0B10',
-    ink: '#1A1A1A',
-    muted: '#55555F',
-    hairline: '#E3E5E3',
-    zebra: '#F7F8F7',
-}
-
-const PAGE = { margin: 48 }
-const LOGO_PATH = path.join(process.cwd(), 'public', 'brand', 'emblem.png')
-
-function contentWidth(doc) {
-    return doc.page.width - PAGE.margin * 2
-}
-
-/** Draws the tricolour rule used throughout the interface. */
-function tricolour(doc, x, y, width, height = 3) {
-    const third = width / 3
-    doc.rect(x, y, third, height).fill(BRAND.red)
-    doc.rect(x + third, y, third, height).fill(BRAND.gold)
-    doc.rect(x + third * 2, y, third, height).fill(BRAND.green)
-}
-
-function sectionHeading(doc, text) {
-    ensureSpace(doc, 60)
-    doc.moveDown(0.8)
-    const y = doc.y
-    doc.font('Helvetica-Bold').fontSize(13).fillColor(BRAND.ink).text(text, PAGE.margin, y)
-    doc.moveTo(PAGE.margin, doc.y + 4)
-        .lineTo(doc.page.width - PAGE.margin, doc.y + 4)
-        .lineWidth(0.5)
-        .strokeColor(BRAND.hairline)
-        .stroke()
-    doc.moveDown(0.7)
-}
-
-/** Starts a new page when the remaining space cannot hold `needed` points. */
-function ensureSpace(doc, needed) {
-    if (doc.y + needed > doc.page.height - PAGE.margin - 30) {
-        doc.addPage()
-    }
-}
 
 function drawCover(doc, report) {
     const width = contentWidth(doc)
@@ -318,60 +284,6 @@ function drawRegionalTable(doc, report) {
     drawTable(doc, columns, report.regions)
 }
 
-function drawTable(doc, columns, rows) {
-    const rowHeight = 18
-    const totalWidth = columns.reduce((sum, c) => sum + c.width, 0)
-
-    const header = () => {
-        const y = doc.y
-        doc.rect(PAGE.margin, y, totalWidth, rowHeight).fill(BRAND.green)
-        let x = PAGE.margin
-        for (const col of columns) {
-            doc.font('Helvetica-Bold')
-                .fontSize(8)
-                .fillColor('#FFFFFF')
-                .text(col.header, x + 6, y + 5.5, {
-                    width: col.width - 12,
-                    align: col.align,
-                    lineBreak: false,
-                })
-            x += col.width
-        }
-        doc.y = y + rowHeight
-    }
-
-    ensureSpace(doc, rowHeight * 3)
-    header()
-
-    rows.forEach((row, i) => {
-        if (doc.y + rowHeight > doc.page.height - PAGE.margin - 30) {
-            doc.addPage()
-            header()
-        }
-        const y = doc.y
-        if (i % 2 === 1) {
-            doc.rect(PAGE.margin, y, totalWidth, rowHeight).fill(BRAND.zebra)
-        }
-        let x = PAGE.margin
-        for (const col of columns) {
-            const raw = col.get(row)
-            const text = typeof raw === 'number' ? raw.toLocaleString('en-GB') : String(raw ?? '—')
-            doc.font(col.bold ? 'Helvetica-Bold' : 'Helvetica')
-                .fontSize(8.5)
-                .fillColor(BRAND.ink)
-                .text(text, x + 6, y + 5, {
-                    width: col.width - 12,
-                    align: col.align,
-                    ellipsis: true,
-                    lineBreak: false,
-                })
-            x += col.width
-        }
-        doc.y = y + rowHeight
-    })
-
-    doc.moveDown(0.5)
-}
 
 function drawConstituencyResults(doc, report) {
     doc.addPage()
@@ -482,84 +394,31 @@ function drawConstituencyResults(doc, report) {
     }
 }
 
-/** Page numbers and a running footer, applied once the body is laid out. */
-function paginate(doc, report) {
-    const range = doc.bufferedPageRange()
-    for (let i = range.start; i < range.start + range.count; i++) {
-        doc.switchToPage(i)
-
-        // The footer sits below the bottom margin, and pdfkit responds to text
-        // written past that margin by starting a new page — which produced a
-        // blank page per footer and left the real pages unfooted. Dropping the
-        // margin for the duration of the write suppresses that pagination.
-        const originalBottomMargin = doc.page.margins.bottom
-        doc.page.margins.bottom = 0
-
-        const y = doc.page.height - PAGE.margin + 8
-        const width = contentWidth(doc)
-
-        doc.moveTo(PAGE.margin, y - 8)
-            .lineTo(doc.page.width - PAGE.margin, y - 8)
-            .lineWidth(0.5)
-            .strokeColor(BRAND.hairline)
-            .stroke()
-
-        doc.font('Helvetica')
-            .fontSize(7.5)
-            .fillColor(BRAND.muted)
-            .text(`${report.meta.electionName} — Official Election Report`, PAGE.margin, y, {
-                width: width / 2,
-                lineBreak: false,
-            })
-
-        doc.font('Helvetica')
-            .fontSize(7.5)
-            .fillColor(BRAND.muted)
-            .text(`Page ${i - range.start + 1} of ${range.count}`, PAGE.margin + width / 2, y, {
-                width: width / 2,
-                align: 'right',
-                lineBreak: false,
-            })
-
-        doc.page.margins.bottom = originalBottomMargin
-    }
-}
-
 /**
  * @returns {Promise<Buffer>} the rendered PDF
  */
 export function renderReportPdf(report) {
-    return new Promise((resolve, reject) => {
-        const doc = new PDFDocument({
-            size: 'A4',
-            margin: PAGE.margin,
-            // Required so paginate() can revisit pages to stamp page numbers.
-            bufferPages: true,
-            info: {
-                Title: `${report.meta.electionName} — Official Election Report`,
-                Author: ORGANISATION_NAME,
-                Subject: 'Election results and turnout',
-                Creator: `${ORGANISATION_NAME} Voting Platform`,
-                CreationDate: new Date(report.meta.generatedAt),
-            },
-        })
+    const doc = new PDFDocument({
+        size: 'A4',
+        margin: PAGE.margin,
+        // Required so paginate() can revisit pages to stamp page numbers.
+        bufferPages: true,
+        info: {
+            Title: `${report.meta.electionName} — Official Election Report`,
+            Author: ORGANISATION_NAME,
+            Subject: 'Election results and turnout',
+            Creator: `${ORGANISATION_NAME} Voting Platform`,
+            CreationDate: new Date(report.meta.generatedAt),
+        },
+    })
 
-        const chunks = []
-        doc.on('data', (chunk) => chunks.push(chunk))
-        doc.on('end', () => resolve(Buffer.concat(chunks)))
-        doc.on('error', reject)
-
-        try {
-            drawCover(doc, report)
-            doc.addPage()
-            drawSummary(doc, report)
-            drawRegionalChart(doc, report)
-            drawRegionalTable(doc, report)
-            drawConstituencyResults(doc, report)
-            paginate(doc, report)
-            doc.end()
-        } catch (error) {
-            reject(error)
-        }
+    return renderDocument(doc, () => {
+        drawCover(doc, report)
+        doc.addPage()
+        drawSummary(doc, report)
+        drawRegionalChart(doc, report)
+        drawRegionalTable(doc, report)
+        drawConstituencyResults(doc, report)
+        paginate(doc, `${report.meta.electionName} — Official Election Report`)
     })
 }

@@ -116,6 +116,99 @@ export function isVotingOpen(status) {
     return status === ELECTION_STATUS.OPEN
 }
 
+/**
+ * Whether the count may be published.
+ *
+ * ENDED and nothing else. The temptation is to also allow CLOSED — the master
+ * switch is off, so no more ballots can arrive — but CLOSED is the state for
+ * an election with no usable window at all, including one that has not been
+ * configured yet and one an administrator has switched off mid-poll to
+ * investigate something. Publishing a running tally in either case would be a
+ * partial result released while the election is still live, which is the exact
+ * failure this gate exists to prevent. Results wait for a closing time that has
+ * actually passed.
+ *
+ * A settings row that cannot be read yields no status and therefore no
+ * results: this fails closed, like every other gate in the platform.
+ */
+export function areResultsPublic(status) {
+    return status === ELECTION_STATUS.ENDED
+}
+
+/**
+ * What the results page says when it is not showing results.
+ *
+ * Kept beside the states rather than in the page, so the sentence a voter reads
+ * is derived from the same settings row that decides whether they see a tally —
+ * a page that says "results will be published after voting ends" while the
+ * gate has already opened would be its own kind of wrong.
+ */
+export const RESULTS_UNAVAILABLE = {
+    [ELECTION_STATUS.SCHEDULED]: {
+        title: 'Election results are not available yet',
+        detail: 'Voting has not started. Results will be published on this page after voting ends.',
+    },
+    [ELECTION_STATUS.OPEN]: {
+        title: 'Results will be available after voting ends',
+        detail:
+            'Voting is open. No totals, shares or partial counts are published while a ballot ' +
+            'can still be cast — everyone sees the result for the first time at the same moment.',
+    },
+    [ELECTION_STATUS.CLOSED]: {
+        title: 'Election results are not available',
+        detail:
+            'There is no published result at the moment. Results appear here once voting has ' +
+            'closed and the Commission has completed the count.',
+    },
+}
+
+export function resultsUnavailableMessage(status) {
+    return RESULTS_UNAVAILABLE[status] ?? RESULTS_UNAVAILABLE[ELECTION_STATUS.CLOSED]
+}
+
+/**
+ * What the platform offers a visitor to do, given where the election is.
+ *
+ * The landing page and the election details page both open with the same pair
+ * of buttons, and both used to decide independently what those buttons should
+ * say. That is how the front page came to offer "Sign in to vote" after the
+ * poll closed — a button whose only destination is a refusal screen.
+ *
+ * The rule is that every action offered must lead somewhere that works:
+ *
+ * - **Open**: registering and signing in both do something, so both are shown.
+ * - **Scheduled or closed**: the register genuinely is open, and the details
+ *   page is where someone finds out when voting starts. Sign-in is not offered,
+ *   because `/api/login` refuses before it even checks credentials.
+ * - **Ended**: neither registering nor signing in leads anywhere any more, so
+ *   neither is offered. The result is the only thing left, and it takes the
+ *   whole call to action rather than being added as a third button beside two
+ *   that no longer work.
+ *
+ * A failed settings read falls through to the open set, matching every other
+ * surface: the routes gate themselves properly, so the worst case is a voter
+ * reaching a screen that explains the position.
+ *
+ * @returns {Array<{ href: string, label: string }>} in priority order
+ */
+export function electionActions(status) {
+    if (status === ELECTION_STATUS.ENDED) {
+        return [{ href: '/results', label: 'View election results' }]
+    }
+
+    if (status === ELECTION_STATUS.OPEN || status == null) {
+        return [
+            { href: '/register', label: 'Register to vote' },
+            { href: '/login', label: 'Sign in to vote' },
+        ]
+    }
+
+    return [
+        { href: '/register', label: 'Register to vote' },
+        { href: '/election', label: 'View election details' },
+    ]
+}
+
 export function electionGateMessage(status) {
     return ELECTION_GATE_MESSAGES[status] ?? ELECTION_GATE_MESSAGES[ELECTION_STATUS.CLOSED]
 }

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Alert } from '@/components/ui/alert'
 import { SectionHeader } from '@/components/admin/SectionHeader'
 import { useFetch } from '@/lib/useFetch'
+import { downloadExport } from '@/lib/download'
 import { formatWhen } from '@/lib/voter-client'
 
 const nf = new Intl.NumberFormat('en-GB')
@@ -33,6 +34,18 @@ const FORMATS = [
     },
 ]
 
+/**
+ * The candidate register is a separate download, not a fourth format of the
+ * results report.
+ *
+ * It answers a different question, at a different point in the election: the
+ * report says who won, and is generated at the end; the register says who is
+ * standing, and is checked *before* the poll opens, when there is no result to
+ * report at all. Filing it under "Election report" would hide the one export an
+ * administrator needs during the period when every other export is empty.
+ */
+const CANDIDATE_LIST_ID = 'candidate-list'
+
 export default function Reports() {
     const { data: stats, loading } = useFetch('/api/admin/stats', {
         errorMessage: 'Could not load election status.',
@@ -42,48 +55,27 @@ export default function Reports() {
     const [error, setError] = useState('')
     const [lastExport, setLastExport] = useState(null)
 
-    async function handleExport(format) {
-        setDownloading(format)
+    async function download(id, url, fallbackName) {
+        setDownloading(id)
         setError('')
 
-        try {
-            const res = await fetch(`/api/admin/results/export?format=${format}`)
+        const result = await downloadExport(url, fallbackName)
 
-            if (!res.ok) {
-                let message = 'Could not generate the report.'
-                try {
-                    message = (await res.json()).error ?? message
-                } catch {
-                    /* non-JSON error body */
-                }
-                setError(message)
-                return
-            }
+        if (result.ok) setLastExport({ filename: result.filename, at: new Date().toISOString() })
+        else setError(result.error)
 
-            // The server names the file after the election and export date. The
-            // browser only receives that via Content-Disposition, so it is
-            // parsed back out rather than guessed at.
-            const disposition = res.headers.get('Content-Disposition') ?? ''
-            const match = /filename="([^"]+)"/.exec(disposition)
-            const filename = match?.[1] ?? `election-report.${format}`
-
-            const blob = await res.blob()
-            const url = URL.createObjectURL(blob)
-            const link = document.createElement('a')
-            link.href = url
-            link.download = filename
-            document.body.appendChild(link)
-            link.click()
-            link.remove()
-            URL.revokeObjectURL(url)
-
-            setLastExport({ filename, at: new Date().toISOString() })
-        } catch {
-            setError('Could not reach the server. Please try again.')
-        } finally {
-            setDownloading(null)
-        }
+        setDownloading(null)
     }
+
+    const handleExport = (format) =>
+        download(format, `/api/admin/results/export?format=${format}`, `election-report.${format}`)
+
+    const handleCandidateList = () =>
+        download(
+            CANDIDATE_LIST_ID,
+            '/api/admin/candidates/export?format=pdf',
+            'candidate-list.pdf'
+        )
 
     const election = stats?.election
     const votingStillOpen = election?.status === 'open'
@@ -196,6 +188,41 @@ export default function Reports() {
                 regional breakdown and the ballot reconciliation check. Each export is recorded in
                 the audit log. No report contains anything that could link a ballot to a voter.
             </p>
+
+            <div className="border-t border-border pt-6">
+                <SectionHeader
+                    title="Candidate list"
+                    description="The complete candidate register, for checking before the poll opens."
+                />
+
+                <div className="mt-6 flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:p-5">
+                    <div className="min-w-0">
+                        <p className="font-semibold">Candidate list (PDF)</p>
+                        <p className="mt-0.5 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                            Every candidate in the system, grouped by region and constituency, with
+                            their photograph beside their name. Includes candidates marked
+                            withdrawn and constituencies with nobody standing, so the register can
+                            be checked for anyone who should not be on it. Contains no vote totals.
+                        </p>
+                    </div>
+                    <Button
+                        variant="outline"
+                        className="shrink-0 sm:w-32"
+                        onClick={handleCandidateList}
+                        disabled={downloading !== null}
+                        pending={downloading === CANDIDATE_LIST_ID}
+                        pendingLabel={
+                            <>
+                                Building…
+                                <span className="sr-only"> candidate list</span>
+                            </>
+                        }
+                    >
+                        Download
+                        <span className="sr-only"> candidate list PDF</span>
+                    </Button>
+                </div>
+            </div>
         </div>
     )
 }
