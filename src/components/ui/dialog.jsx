@@ -60,6 +60,15 @@ function DialogContent({
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
+        // Radix gives the content role="dialog" and hides the rest of the
+        // document with aria-hidden, but it never emits aria-modal. That
+        // combination is *usually* enough, because a screen reader cannot reach
+        // hidden siblings — but aria-modal is what tells assistive technology
+        // the surface is modal rather than merely a dialog, and several
+        // screen-reader/browser pairings key their "you are in a dialog"
+        // behaviour off it. Declared before the prop spread so a caller can
+        // still override it for a genuinely non-modal dialog.
+        aria-modal="true"
         className={cn(
           "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-6 rounded-lg bg-popover p-6 text-sm text-popover-foreground shadow-xl ring-1 ring-foreground/5 duration-100 outline-none sm:max-w-md dark:ring-foreground/10 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
