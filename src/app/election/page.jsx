@@ -8,6 +8,7 @@ import {
     ELECTION_STATUS,
     ELECTION_STATUS_TONE,
     electionActions,
+    electionResultsNotice,
     formatWhen,
 } from '@/lib/election-status'
 import { ELECTION_NAME, ELECTORAL_COMMISSION } from '@/lib/election'
@@ -65,7 +66,11 @@ function summarise(election) {
                 ? `Voting opens on ${formatWhen(election.opensAt)}.`
                 : 'Voting will open during the scheduled election period.'
         case ELECTION_STATUS.ENDED:
-            return 'Voting has ended.'
+            // While the count is with the Commission, say so here rather than
+            // stopping at "Voting has ended." This is the page a voter is sent
+            // to when there is no result to link to yet, so it has to answer
+            // the question that sent them.
+            return electionResultsNotice(election) ?? 'Voting has ended.'
         default:
             return 'Voting is not open at the moment.'
     }
@@ -98,7 +103,7 @@ export default async function ElectionDetailsPage() {
     // state's "View election details" would be a button that reloads the page
     // the reader is already on. It becomes the way back instead. Nothing is
     // added, and no state gains a third button.
-    const actions = electionActions(election.status).map((action) =>
+    const actions = electionActions(election).map((action) =>
         action.href === '/election' ? { href: '/', label: 'Return home' } : action
     )
 

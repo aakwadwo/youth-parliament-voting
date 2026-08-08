@@ -1,4 +1,5 @@
 import { resolveWinners, percent } from '@/lib/results-math'
+import { areResultsPublic } from '@/lib/election-status'
 
 /**
  * The aggregate election result, in the only shape the public is ever shown.
@@ -22,6 +23,27 @@ import { resolveWinners, percent } from '@/lib/results-math'
  */
 
 const UNSPECIFIED_REGION = 'Region not set'
+
+/**
+ * The gate and the builder, in that order, in one call.
+ *
+ * The page could ask `areResultsPublic()` itself and then call the builder —
+ * and it used to — but that leaves the check and the query as two statements a
+ * future edit can separate, in a file where separating them publishes an
+ * election result early. Here the only way to obtain a tally is through the
+ * function that refuses to produce one until the Commission has released it,
+ * and `get_results()` is not reached at all while publication is off. An
+ * unauthenticated request in that state costs one settings read and returns no
+ * figures, because none were ever fetched.
+ *
+ * @param supabase service-role client
+ * @param {object|null} election - the public election object from `readElection`
+ * @returns {Promise<object|null>} the published result, or null if it is not public
+ */
+export async function readPublicResults(supabase, election) {
+    if (!areResultsPublic(election)) return null
+    return buildPublicResults(supabase, election)
+}
 
 /**
  * @param supabase service-role client
@@ -121,6 +143,9 @@ export async function buildPublicResults(supabase, election) {
     return {
         electionName: election?.electionName ?? null,
         closedAt: election?.closesAt ?? null,
+        // When the Commission released these figures — a different fact from
+        // when voting closed, and the one that dates the declaration.
+        publishedAt: election?.resultsPublishedAt ?? null,
         summary: {
             totalVotes,
             totalConstituencies: byConstituency.size,

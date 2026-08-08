@@ -5,7 +5,7 @@ import { ElectionStatusPanel } from '@/components/ElectionStatusBanner'
 import { MIN_AGE, MAX_AGE } from '@/lib/validation'
 import { ELECTION_NAME, CONTACT_EMAIL, CONTACT_PHONE_DISPLAY, CONTACT_PHONE_TEL } from '@/lib/election'
 import { readElection } from '@/lib/election-server'
-import { electionActions } from '@/lib/election-status'
+import { electionActions, electionResultsNotice } from '@/lib/election-status'
 
 // Re-read at most every 15 seconds. The front page takes the traffic spike when
 // a poll opens, so it must stay cacheable, but a cached copy that outlives the
@@ -60,7 +60,14 @@ export default async function Home() {
     // is not registering or signing in — both of those now lead to a refusal
     // screen. The single slot is given to the result rather than adding a third
     // button beside two dead ends.
-    const actions = electionActions(election?.status)
+    //
+    // Ending the poll is not what puts "View election results" here: the
+    // Commission releasing the count is. Until it does, this offers the
+    // election's own details and `notice` says why there is no result to read
+    // yet — a button leading to a page that explains the wait is not a call to
+    // action, it is a detour.
+    const actions = electionActions(election)
+    const notice = electionResultsNotice(election)
 
     return (
         <div className="flex min-h-dvh flex-col bg-background">
@@ -83,6 +90,12 @@ export default async function Home() {
                     </p>
 
                     <ElectionStatusPanel initial={election} className="mt-8" />
+
+                    {notice ? (
+                        <p className="mt-4 max-w-2xl leading-relaxed text-muted-foreground">
+                            {notice}
+                        </p>
+                    ) : null}
 
                     <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                         {actions.map((action, i) => (

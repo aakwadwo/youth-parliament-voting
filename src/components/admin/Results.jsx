@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Stat, StatGrid, StatSkeleton } from '@/components/ui/stat'
 import { Skeleton, EmptyState, VoteBar } from '@/components/ui/feedback'
 import { SectionHeader } from '@/components/admin/SectionHeader'
+import ResultsPublication from '@/components/admin/ResultsPublication'
 import { useFetch } from '@/lib/useFetch'
 
 const nf = new Intl.NumberFormat('en-GB')
@@ -62,6 +63,13 @@ export default function Results() {
                         Try again
                     </Button>
                 </Alert>
+
+                {/* Still offered when the tallies will not load. Whether the
+                    result is currently on public display is a separate fact
+                    from whether this screen can render it, and an
+                    administrator must be able to withdraw a published result
+                    even on a screen that is otherwise broken. */}
+                <ResultsPublication />
             </div>
         )
     }
@@ -253,6 +261,13 @@ export default function Results() {
                         </section>
                     )
                 })}
+            </div>
+
+            {/* Below the figures, not beside them: the declaration is the last
+                thing an administrator does, after reading the tallies above
+                and reconciling them in Reports. */}
+            <div className="border-t border-border pt-6">
+                <ResultsPublication />
             </div>
         </div>
     )

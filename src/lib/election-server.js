@@ -9,6 +9,8 @@ import {
     isVotingOpen,
     electionGateMessage,
     electionGateCode,
+    toPublication,
+    PUBLICATION_COLUMNS,
 } from '@/lib/election-status'
 
 /**
@@ -49,6 +51,32 @@ export const readElection = cache(async function readElection(client) {
 
     return { election: toPublicElection(data), error: null }
 })
+
+/**
+ * The publication decision, as the administrator who has to make it sees it.
+ *
+ * Distinct from `readElection` on purpose: the public object carries only the
+ * combined answer, while `toPublication` breaks it into the parts an
+ * administrator has to act on. See that function in `@/lib/election-status`.
+ *
+ * Not wrapped in `cache`: this is read by the route that immediately changes
+ * it, where a per-request memo of the value being written is a trap rather than
+ * a saving.
+ *
+ * @param {object} [client] - injectable Supabase client, for tests
+ */
+export async function readResultsPublication(client) {
+    const supabase = client ?? createAdminClient()
+
+    const { data, error } = await supabase
+        .from('election_settings')
+        .select(PUBLICATION_COLUMNS)
+        .maybeSingle()
+
+    if (error) return { publication: null, error }
+
+    return { publication: toPublication(data), error: null }
+}
 
 /**
  * The backend half of election-state enforcement.

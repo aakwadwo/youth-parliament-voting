@@ -21,6 +21,11 @@ export const AUDIT_ACTIONS = {
     CONSTITUENCY_CREATED: 'constituency_created',
     CONSTITUENCY_IMPORTED: 'constituency_imported',
     RESULTS_EXPORTED: 'results_exported',
+    // Releasing the count to the public, and withdrawing it again. Recorded
+    // separately from the export because exporting a report is an internal act
+    // and this one puts figures in front of the country.
+    RESULTS_PUBLISHED: 'results_published',
+    RESULTS_UNPUBLISHED: 'results_unpublished',
     CANDIDATE_LIST_EXPORTED: 'candidate_list_exported',
 }
 

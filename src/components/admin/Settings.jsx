@@ -29,6 +29,8 @@ const ACTION_LABELS = {
     constituency_created: 'Constituency added',
     constituency_imported: 'Constituencies imported',
     results_exported: 'Election report exported',
+    results_published: 'Election results published to the public',
+    results_unpublished: 'Election results withdrawn from the public',
 }
 
 const ACTION_TONE = {
@@ -37,6 +39,10 @@ const ACTION_TONE = {
     voting_closed: 'warning',
     candidate_deactivated: 'warning',
     results_exported: 'brand',
+    // The declaration, and its withdrawal. Both belong in the same class of
+    // event as opening and closing the poll.
+    results_published: 'success',
+    results_unpublished: 'warning',
 }
 
 /**

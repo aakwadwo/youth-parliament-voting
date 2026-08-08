@@ -8,7 +8,8 @@ The official voting platform for National Youth Parliament of Ghana elections. N
 
 - **Voters** register with their name, date of birth, phone number and constituency, then cast one ballot for a candidate standing in that constituency.
 - **Ballots are anonymous.** The `votes` table holds only `candidate_id`, `constituency_id` and `voted_at`. No column anywhere links a ballot to the voter who cast it. Double voting is prevented by an atomic `has_voted` flag on `voters`, flipped inside the same transaction that inserts the ballot — see `cast_vote()` in `migrations/0008_harden_cast_vote.up.sql`.
-- **Administrators** manage constituencies, candidates and the voting window, watch live results, and export the official election report, behind a JWT-protected `/admin` area.
+- **Administrators** manage constituencies, candidates and the voting window, watch live results, release the result to the public, and export the official election report, behind a JWT-protected `/admin` area.
+- **Voting ending does not publish the result.** Closing the poll stops ballots being accepted; the Electoral Commission then reviews the count and releases it explicitly from **Admin → Results**. Until it does, `/results` says the count is being reviewed and the landing page offers no link to it. See `election_settings.results_published_at` (migration `0015`).
 - All server-side database access uses the Supabase **service-role** key (`src/lib/supabase-admin.js`). There is no Supabase Auth session anywhere in this app, so the public anon key carries no useful identity and no application code uses it.
 
 ### Ballot secrecy, precisely
@@ -64,6 +65,8 @@ tests/                          node:test suite (no test framework dependency)
 
 **Rate limiting runs on Postgres, not Redis.** `check_rate_limit()` (migration `0013`) reimplements Upstash's approximated sliding window inside the database, so the tuned limits keep their exact meaning. Dropping Upstash removed the only non-Supabase dependency *and* a security hole: the Redis limiter failed **open**, so anyone able to disrupt it switched off every brute-force protection at once. Postgres is already required by all of these routes — without it there is no voter to authenticate against — so nothing is left to attack when it is down. One row per identifier per window, not per request.
 
+**Publication is a decision, not a timestamp comparison.** The public results page used to open itself the moment the voting window elapsed, which made the clock the publishing authority and left no room for the reconciliation that happens between the last ballot and the declaration. `areResultsPublic()` now requires both that voting has ended *and* that an administrator has released the count, and `readPublicResults()` refuses before it queries — so while publication is off, `get_results()` is never called and an unauthenticated request receives no figures to withhold. Reopening voting withdraws a published result on the next request without the column being touched.
+
 **Validation is shared, not duplicated.** `src/lib/validation.js` is imported by the forms and by the API routes. Client-side checks are a courtesy; the server enforces every one of them again.
 
 **The XLSX writer has no dependencies.** An `.xlsx` file is a ZIP of XML, and Node ships DEFLATE and CRC-32. The leading spreadsheet library pulls roughly sixty transitive packages — several unmaintained, one with a live advisory — into a system that decides an election. `src/lib/export/zip.js` and `xlsx.js` replace all of it in about 250 lines.
@@ -117,7 +120,7 @@ Expected schema (defined in Supabase, outside this repo):
 - `candidates` (`id`, `full_name`, `constituency_id`, `photo_url`, `is_active`)
 - `voters` (`id`, `full_name`, `voter_dob`, `voter_phone`, `constituency_id`, `has_voted`, + `registered_at`, `is_verified`, `verification_method` from `0007`)
 - `votes` (`id`, `candidate_id`, `constituency_id`, `voted_at`) — no voter reference, by design
-- `election_settings` (single row: `id`, `election_name`, `is_active`, `voting_opens_at`, `voting_closes_at`)
+- `election_settings` (single row: `id`, `election_name`, `is_active`, `voting_opens_at`, `voting_closes_at`, + `description` from `0011`, `results_published_at` from `0015`)
 - `admins` (`id`, `email`, `password_hash`, `role`) — bcrypt hashes, created manually
 - `admin_audit_log` (from `0005`, extended by `0010`)
 - `rate_limit_counters` (from `0013`) — sliding-window counters; safe to truncate, which resets all limits

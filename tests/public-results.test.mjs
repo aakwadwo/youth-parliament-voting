@@ -3,17 +3,15 @@ import assert from 'node:assert/strict'
 
 import { buildPublicResults } from '@/lib/public-results'
 import { resolveWinners, percent } from '@/lib/results-math'
-import {
-    ELECTION_STATUS,
-    areResultsPublic,
-    resultsUnavailableMessage,
-} from '@/lib/election-status'
+import { ELECTION_STATUS, resultsUnavailableMessage } from '@/lib/election-status'
 import { makeFakeSupabase } from './fixtures/fake-supabase.mjs'
 
 const ELECTION = {
     electionName: 'Test Election 2026',
     closesAt: '2026-07-24T18:00:00.000Z',
     status: ELECTION_STATUS.ENDED,
+    resultsPublished: true,
+    resultsPublishedAt: '2026-07-26T09:00:00.000Z',
 }
 
 function build() {
@@ -31,31 +29,17 @@ function find(results, name) {
 
 // --------------------------------------------------------------------------
 // The gate
+//
+// The gate itself — who may see a result, and when — is exercised in full in
+// results-publication.test.mjs, including the server-side refusal. What is
+// checked here is only that every state which refuses has words for it.
 // --------------------------------------------------------------------------
-
-test('results are published only once voting has ended', () => {
-    assert.equal(areResultsPublic(ELECTION_STATUS.ENDED), true)
-
-    // The three states that must never show a tally. CLOSED is included
-    // deliberately: it covers an election switched off mid-poll, where a count
-    // exists but publishing it would be a partial release.
-    for (const status of [
-        ELECTION_STATUS.SCHEDULED,
-        ELECTION_STATUS.OPEN,
-        ELECTION_STATUS.CLOSED,
-    ]) {
-        assert.equal(areResultsPublic(status), false, `${status} must not publish results`)
-    }
-
-    // Fails closed on a status it has never heard of.
-    assert.equal(areResultsPublic(undefined), false)
-    assert.equal(areResultsPublic('something-new'), false)
-})
 
 test('every non-publishing state has a sentence explaining itself', () => {
     for (const status of [
         ELECTION_STATUS.SCHEDULED,
         ELECTION_STATUS.OPEN,
+        ELECTION_STATUS.ENDED,
         ELECTION_STATUS.CLOSED,
         undefined,
     ]) {

@@ -5,10 +5,9 @@ import { VoteBar, EmptyState } from '@/components/ui/feedback'
 import { ElectionWindow } from '@/components/VotingNotOpen'
 import { createAdminClient } from '@/lib/supabase-admin'
 import { readElection } from '@/lib/election-server'
-import { buildPublicResults } from '@/lib/public-results'
+import { readPublicResults } from '@/lib/public-results'
 import {
     ELECTION_STATUS,
-    areResultsPublic,
     resultsUnavailableMessage,
     formatDateTimeLong,
 } from '@/lib/election-status'
@@ -19,8 +18,16 @@ import { ELECTION_NAME, ELECTORAL_COMMISSION } from '@/lib/election'
  *
  * Open to anyone. No voter session, no phone number, no date of birth, no age
  * check — a result nobody can read without first proving who they are is not a
- * published result. The one thing that gates this page is the election's own
- * state, read from the same admin settings row every other screen reads.
+ * published result. What gates this page is the election's own state plus the
+ * Commission's decision to release the count, both read from the same admin
+ * settings row every other screen reads.
+ *
+ * Ending the poll is not that decision. A visitor arriving between the last
+ * ballot and the declaration is told the count is being reviewed, and the
+ * tally is not fetched at all: `readPublicResults` refuses before it queries,
+ * so there is no window in which the figures exist on this request and merely
+ * go unrendered. Withdrawing publication reverses this on the next request,
+ * because nothing about the result is cached across one.
  *
  * Rendered entirely on the server. There is no `/api/results` behind it and no
  * client component receiving the tallies as props, so the only thing that ever
@@ -68,8 +75,8 @@ function ResultsUnavailable({ election, status }) {
             </div>
 
             <p className="mt-8 text-sm leading-relaxed text-muted-foreground">
-                Results are published by the {ELECTORAL_COMMISSION} once voting has closed. This
-                page does not require you to sign in.
+                Results are published by the {ELECTORAL_COMMISSION} once voting has closed and it
+                has reviewed the count. This page does not require you to sign in.
             </p>
         </PageShell>
     )
@@ -191,13 +198,9 @@ export default async function ResultsPage() {
         return <ResultsUnavailable election={null} status={ELECTION_STATUS.CLOSED} />
     }
 
-    if (!areResultsPublic(election.status)) {
-        return <ResultsUnavailable election={election} status={election.status} />
-    }
-
     let results
     try {
-        results = await buildPublicResults(createAdminClient(), election)
+        results = await readPublicResults(createAdminClient(), election)
     } catch (err) {
         console.error('[results] failed to build public results', err)
         return (
@@ -211,6 +214,13 @@ export default async function ResultsPage() {
                 </NavButton>
             </PageShell>
         )
+    }
+
+    // null means the Commission has not released the count — either voting is
+    // still live, or it has ended and the review is not finished. Nothing was
+    // read from the database, so there is nothing here to withhold.
+    if (results === null) {
+        return <ResultsUnavailable election={election} status={election.status} />
     }
 
     const { summary } = results
@@ -301,12 +311,20 @@ export default async function ResultsPage() {
                     system links a vote to the person who cast it, so this page can state how many
                     votes each candidate received but never who voted for them.
                 </p>
-                {results.closedAt ? (
-                    <p className="mt-3 text-sm text-muted-foreground">
-                        Voting closed {formatDateTimeLong(results.closedAt)}. Published by the{' '}
-                        {ELECTORAL_COMMISSION}.
-                    </p>
-                ) : null}
+                {/* Two different instants, and the difference is the point:
+                    the poll closing is when the last ballot was accepted, the
+                    publication is when the Commission finished checking the
+                    count and released it. Stating only the first, as this page
+                    used to, implied the result had been public since the
+                    moment voting stopped. */}
+                <p className="mt-3 text-sm text-muted-foreground">
+                    {results.closedAt
+                        ? `Voting closed ${formatDateTimeLong(results.closedAt)}. `
+                        : null}
+                    {results.publishedAt
+                        ? `Results released ${formatDateTimeLong(results.publishedAt)} by the ${ELECTORAL_COMMISSION}.`
+                        : `Released by the ${ELECTORAL_COMMISSION}.`}
+                </p>
             </div>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">

@@ -223,6 +223,8 @@ test('the public shape carries the window and never leaks other settings', () =>
         'electionName',
         'isOpen',
         'opensAt',
+        'resultsPublished',
+        'resultsPublishedAt',
         'status',
     ])
     assert.equal(election.isOpen, true)
@@ -237,6 +239,8 @@ test('a missing settings row still yields a renderable election', () => {
     assert.match(election.electionName, /\S/)
     assert.equal(election.opensAt, null)
     assert.equal(election.closesAt, null)
+    assert.equal(election.resultsPublished, false)
+    assert.equal(election.resultsPublishedAt, null)
 })
 
 /**
@@ -327,8 +331,10 @@ test('missing and malformed values format to empty, never to "Invalid Date"', ()
 // What the platform offers a visitor to do
 // --------------------------------------------------------------------------
 
+const at = (status, over = {}) => ({ status, resultsPublished: false, ...over })
+
 test('an open poll offers registering and signing in, and nothing else', () => {
-    assert.deepEqual(electionActions(ELECTION_STATUS.OPEN), [
+    assert.deepEqual(electionActions(at(ELECTION_STATUS.OPEN)), [
         { href: '/register', label: 'Register to vote' },
         { href: '/login', label: 'Sign in to vote' },
     ])
@@ -340,7 +346,7 @@ test('before a poll opens, sign-in is not offered at all', () => {
     // refusal screen. The register genuinely is open, so that stays.
     for (const status of [ELECTION_STATUS.SCHEDULED, ELECTION_STATUS.CLOSED]) {
         assert.deepEqual(
-            electionActions(status),
+            electionActions(at(status)),
             [
                 { href: '/register', label: 'Register to vote' },
                 { href: '/election', label: 'View election details' },
@@ -350,8 +356,8 @@ test('before a poll opens, sign-in is not offered at all', () => {
     }
 })
 
-test('once voting has ended, the only action offered is the result', () => {
-    const actions = electionActions(ELECTION_STATUS.ENDED)
+test('once the result is published, it is the only action offered', () => {
+    const actions = electionActions(at(ELECTION_STATUS.ENDED, { resultsPublished: true }))
 
     assert.deepEqual(actions, [{ href: '/results', label: 'View election results' }])
 
@@ -363,12 +369,29 @@ test('once voting has ended, the only action offered is the result', () => {
     )
 })
 
+test('ending the poll does not on its own put the results link on the page', () => {
+    // The regression this guards: ENDED used to imply published, so the front
+    // page linked to a result nobody at the Commission had approved.
+    const actions = electionActions(at(ELECTION_STATUS.ENDED))
+
+    assert.equal(
+        actions.some((a) => a.href === '/results'),
+        false,
+        'a results link was offered before the Commission released the count'
+    )
+    assert.deepEqual(actions, [{ href: '/election', label: 'View election details' }])
+})
+
 test('no state offers more than two actions', () => {
     for (const status of Object.values(ELECTION_STATUS)) {
-        assert.ok(
-            electionActions(status).length <= 2,
-            `${status} offers ${electionActions(status).length} actions`
-        )
+        for (const published of [true, false]) {
+            const actions = electionActions(at(status, { resultsPublished: published }))
+            assert.ok(
+                actions.length <= 2,
+                `${status} (published: ${published}) offers ${actions.length} actions`
+            )
+            assert.ok(actions.length >= 1, `${status} offers nothing at all`)
+        }
     }
 })
 
@@ -376,7 +399,7 @@ test('an unreadable election falls back to the open set rather than nothing', ()
     // A page with no call to action at all is a worse failure than one whose
     // buttons lead to a screen explaining the position — and the routes behind
     // them gate themselves regardless.
-    for (const missing of [null, undefined]) {
-        assert.deepEqual(electionActions(missing), electionActions(ELECTION_STATUS.OPEN))
+    for (const missing of [null, undefined, {}]) {
+        assert.deepEqual(electionActions(missing), electionActions(at(ELECTION_STATUS.OPEN)))
     }
 })
