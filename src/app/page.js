@@ -119,10 +119,10 @@ export default async function Home() {
                             <p className="mt-2 leading-relaxed text-muted-foreground">
                                 Contact the Electoral Commission on{' '}
                                 <a
-                                    href="tel:+233302123456"
+                                    href="tel:+233542298375"
                                     className="font-medium text-primary underline underline-offset-4"
                                 >
-                                    +233 30 212 3456
+                                    +233 54 229 8375
                                 </a>{' '}
                                 or{' '}
                                 {/* Clears a 320px line by ~2px with the system
@@ -130,10 +130,10 @@ export default async function Home() {
                                     rather than leave the front door of the
                                     service one metric change from overflowing. */}
                                 <a
-                                    href="mailto:elections@youthparliament.gov.gh"
+                                    href="mailto:aakwadwo1@gmail.com"
                                     className="font-medium text-primary underline underline-offset-4 [overflow-wrap:anywhere]"
                                 >
-                                    elections@youthparliament.gov.gh
+                                    aakwadwo1@gmail.com
                                 </a>
                                 .
                             </p>

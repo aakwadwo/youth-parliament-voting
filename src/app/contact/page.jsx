@@ -24,13 +24,13 @@ export default function ContactPage() {
                 <dl>
                     <dt>Telephone</dt>
                     <dd>
-                        <a href="tel:+233302123456">+233 30 212 3456</a>, Monday to Friday, 8am to
+                        <a href="tel:+233542298375">+233 54 229 8375</a>, Monday to Friday, 8am to
                         5pm. Extended to 8am to 8pm daily while the poll is open.
                     </dd>
                     <dt>Email</dt>
                     <dd>
-                        <a href="mailto:elections@youthparliament.gov.gh">
-                            elections@youthparliament.gov.gh
+                        <a href="mailto:aakwadwo1@gmail.com">
+                            aakwadwo1@gmail.com
                         </a>
                     </dd>
                 </dl>
@@ -39,8 +39,8 @@ export default function ContactPage() {
                 <p>
                     To request a copy of your registration data, or ask for it to be corrected or
                     erased, write to{' '}
-                    <a href="mailto:privacy@youthparliament.gov.gh">
-                        privacy@youthparliament.gov.gh
+                    <a href="mailto:aakwadwo1@gmail.com">
+                        aakwadwo1@gmail.com
                     </a>
                     . See the <a href="/privacy">privacy notice</a> for what we hold and for how
                     long.
@@ -50,8 +50,8 @@ export default function ContactPage() {
                 <p>
                     To report something you cannot use, or to arrange another way to vote, write
                     to{' '}
-                    <a href="mailto:accessibility@youthparliament.gov.gh">
-                        accessibility@youthparliament.gov.gh
+                    <a href="mailto:aakwadwo1@gmail.com">
+                        aakwadwo1@gmail.com
                     </a>
                     . See the <a href="/accessibility">accessibility statement</a>.
                 </p>
@@ -59,23 +59,14 @@ export default function ContactPage() {
                 <h2>Reporting a security issue</h2>
                 <p>
                     If you believe you have found a vulnerability, report it privately to{' '}
-                    <a href="mailto:security@youthparliament.gov.gh">
-                        security@youthparliament.gov.gh
+                    <a href="mailto:aakwadwo1@gmail.com">
+                        aakwadwo1@gmail.com
                     </a>{' '}
                     rather than disclosing it publicly. We acknowledge reports within two working
                     days.
                 </p>
 
-                <h2>By post</h2>
-                <p>
-                    National Youth Parliament Electoral Commission
-                    <br />
-                    National Youth Parliament of Ghana
-                    <br />
-                    P.O. Box 1234
-                    <br />
-                    Accra, Ghana
-                </p>
+
             </Prose>
         </PageShell>
     )

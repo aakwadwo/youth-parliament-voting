@@ -82,8 +82,8 @@ export default function AccessibilityPage() {
                 <h2>Reporting a problem</h2>
                 <p>
                     If you find something you cannot use, tell us at{' '}
-                    <a href="mailto:accessibility@youthparliament.gov.gh">
-                        accessibility@youthparliament.gov.gh
+                    <a href="mailto:aakwadwo1@gmail.com">
+                        aakwadwo1@gmail.com
                     </a>
                     . Include the page and what happened. We reply within five working days, and
                     treat anything that blocks a person from voting as urgent.

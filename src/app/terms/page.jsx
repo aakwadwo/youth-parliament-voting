@@ -124,8 +124,8 @@ export default function TermsPage() {
                 <h2>Contact</h2>
                 <p>
                     Questions about these terms go to{' '}
-                    <a href="mailto:elections@youthparliament.gov.gh">
-                        elections@youthparliament.gov.gh
+                    <a href="mailto:aakwadwo1@gmail.com">
+                        aakwadwo1@gmail.com
                     </a>
                     .
                 </p>

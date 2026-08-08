@@ -93,8 +93,8 @@ export default function PrivacyPage() {
                 </p>
                 <p>
                     Write to{' '}
-                    <a href="mailto:privacy@youthparliament.gov.gh">
-                        privacy@youthparliament.gov.gh
+                    <a href="mailto:aakwadwo1@gmail.com">
+                        aakwadwo1@gmail.com
                     </a>
                     . We respond within 30 days. If you are not satisfied, you can complain to the
                     Data Protection Commission of Ghana.
