@@ -16,7 +16,7 @@ export default function PrivacyPage() {
                 title="Privacy notice"
                 description="What this service records about you, why it needs it, and how long it is kept."
             />
-            <LastUpdated date="2026-07-30" />
+            <LastUpdated date="2026-08-09" />
 
             <Prose className="mt-8">
                 <h2>What we collect</h2>
@@ -58,6 +58,31 @@ export default function PrivacyPage() {
                     <dd>To show you the correct candidates.</dd>
                 </dl>
 
+                <h2>Preventing abuse of the register</h2>
+                <p>
+                    Because anyone can reach this service, we have to be able to tell an ordinary
+                    voter apart from software registering fictitious ones. When a registration is
+                    completed we therefore record a small amount of technical information about
+                    where it came from: a random identifier we generate for your browser, and a
+                    scrambled, one-way representation of your network address and the general type
+                    of device you used. This lets us count how many registrations have recently
+                    come from the same place without keeping the underlying details.
+                </p>
+                <p>
+                    We do not store your network address or your browser&apos;s identification
+                    string. We do not use canvas, font or any other browser fingerprinting. These
+                    records hold no name, no number and no reference to any voter, so they cannot
+                    be used to work out who registered from where, and they are deleted
+                    automatically once they are old enough to be of no use. We do not publish the
+                    exact thresholds involved, because that would tell anyone abusing the service
+                    how to avoid them.
+                </p>
+                <p>
+                    This information is used to protect registration only. It plays no part in
+                    deciding whether you may sign in or whether your ballot is accepted, and it is
+                    never connected to a ballot.
+                </p>
+
                 <h2>How long we keep it</h2>
                 <p>
                     Registration records are kept for twelve months after the election closes, so
@@ -75,13 +100,26 @@ export default function PrivacyPage() {
                 </p>
 
                 <h2>Cookies</h2>
+                <p>This service sets two cookies, and no others.</p>
+                <dl>
+                    <dt>Session</dt>
+                    <dd>
+                        Set when you register while voting is open, or when you sign in. It holds a
+                        signed session token and expires after 30 minutes or as soon as your ballot
+                        is cast, whichever comes first.
+                    </dd>
+                    <dt>Device</dt>
+                    <dd>
+                        Set when you complete a registration. It holds a random identifier that
+                        means nothing on its own and is used only to count recent registrations
+                        from this browser, as described above. It is never read when you sign in or
+                        vote.
+                    </dd>
+                </dl>
                 <p>
-                    This service sets one cookie when you register or sign in. It holds a signed
-                    session token, it cannot be read by scripts in your browser, and it expires
-                    after 30 minutes or as soon as your ballot is cast, whichever comes first. It
-                    is strictly necessary for the service to work, so there is no cookie banner
-                    and nothing to opt out of. We use no analytics, advertising or tracking
-                    cookies.
+                    Neither can be read by scripts in your browser. Both are strictly necessary for
+                    the service to work, so there is no cookie banner and nothing to opt out of. We
+                    use no analytics, advertising or tracking cookies.
                 </p>
 
                 <h2>Your rights</h2>

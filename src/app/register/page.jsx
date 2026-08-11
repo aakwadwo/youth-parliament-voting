@@ -197,6 +197,17 @@ export default function RegisterPage() {
                 description={`Open to Ghanaians aged ${MIN_AGE} to ${MAX_AGE}.`}
             />
 
+            {/* Guidance, not a rule, and deliberately vague about the controls
+                behind it. Sharing a device is expected and supported — many
+                voters will register from a friend's phone or a school computer —
+                so this asks for orderly use rather than warning anyone off, and
+                it answers the question a shared-device voter actually has next:
+                whether they will need that same phone again on polling day. */}
+            <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+                Where possible, complete one voter registration per device. Once registered, you can
+                sign in and vote from any device.
+            </p>
+
             {constituenciesError ? (
                 <Alert variant="danger" title="Could not load constituencies" className="mt-6">
                     <p>{constituenciesError}</p>
@@ -405,6 +416,17 @@ function RegistrationComplete({ voter, election, onContinue }) {
                 If any information is incorrect, contact the {ELECTORAL_COMMISSION}
                 {ended ? '.' : ' before voting opens.'}
             </p>
+
+            {/* The reassurance a voter who borrowed someone's phone needs, and
+                the one the platform previously could not honestly give. They
+                are not tied to this device, and whoever lent it to them can
+                still register on it. */}
+            {!ended ? (
+                <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+                    You can sign in and vote from any device — you do not need to use this one
+                    again.
+                </p>
+            ) : null}
 
             {/* The opening time comes from the admin settings row that travelled
                 back with the registration, never from a constant here. Once the

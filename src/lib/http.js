@@ -1,39 +1,19 @@
 import { NextResponse } from 'next/server'
 
 import { jsonError, ERROR_CODES } from '@/lib/api-error'
+import { resolveClientIp } from '@/lib/client-ip'
 
 /**
- * The client's IP address, for rate limiting.
+ * The client's IP address, for rate limiting and audit.
  *
- * `x-forwarded-for` is a client-writable header. Taking its first entry
- * unconditionally — as the previous implementation did — lets anyone defeat
- * every IP rate limit in the app by sending `X-Forwarded-For: <random>` on
- * each request, which matters most on exactly the endpoints that are rate
- * limited: registration, login and admin sign-in.
- *
- * Platform-set headers are therefore preferred, because the edge overwrites
- * them and a client cannot forge them. Only if none is present do we fall back
- * to `x-forwarded-for`, and then we take the *right-most* entry, which is the
- * one appended by the nearest trusted proxy rather than whatever the client
- * prepended.
- *
- * If you deploy behind a proxy that is not Vercel, add its trusted header here.
+ * The resolution rules live in `@/lib/client-ip`, which imports nothing from
+ * `next/server` and can therefore be unit tested — this module cannot, and a
+ * value that keys every rate limit in the platform should not be the one part
+ * of it with no test coverage. This wrapper stays so the twelve call sites do
+ * not have to know where the logic moved to.
  */
 export function getClientIp(request) {
-    const trusted =
-        request.headers.get('x-vercel-forwarded-for') ??
-        request.headers.get('cf-connecting-ip') ??
-        request.headers.get('x-real-ip')
-
-    if (trusted) return trusted.trim()
-
-    const forwarded = request.headers.get('x-forwarded-for')
-    if (forwarded) {
-        const hops = forwarded.split(',').map((h) => h.trim()).filter(Boolean)
-        if (hops.length > 0) return hops[hops.length - 1]
-    }
-
-    return 'unknown'
+    return resolveClientIp(request.headers)
 }
 
 /**

@@ -1,50 +1,70 @@
 import { createHmac } from 'node:crypto'
 
 /**
- * "One device, one registration" — the anti-abuse layer on voter registration.
+ * Registration abuse controls, applied over rolling time windows.
  *
- * Voter identity here is a phone number plus a date of birth. Neither is
- * secret, so the cheapest attack on the register is one operator with a stack
- * of SIM cards. The unique index on voters.voter_phone stops the same number
- * twice; this stops one device enrolling many numbers.
+ * ── What this is, and what it is emphatically not ────────────────────────────
+ *
+ * This module throttles how many voters may be REGISTERED from one device in a
+ * given period. It has nothing to do with voting. No function here is called by
+ * the login route, the ballot page or the vote route, and the digests below are
+ * never associated with a voter row, so nothing in this file can decide whether
+ * a ballot is accepted. The one-person-one-vote rule is enforced entirely by
+ * `voters.has_voted` inside the cast_vote() transaction, and a voter may sign in
+ * and vote from any device, including one they never registered on.
+ *
+ * ── Why this is windowed and not a lifetime cap ──────────────────────────────
+ *
+ * The previous design allowed one registration per browser profile, ever, with
+ * a lifetime backstop of three per address and device class. Both refused real
+ * voters. Many Ghanaians eligible for this election do not own a smartphone and
+ * will register from a friend's phone, a family phone, a school computer or a
+ * cybercafé; a lifetime cap of one turns the second such voter away outright.
+ * And because nothing decayed, capacity spent during a registration drive in
+ * one month was still gone on polling day in the next.
+ *
+ * The controls now count registrations inside a moving window, so capacity is
+ * returned automatically as events age out. A shared device serves a queue of
+ * voters; a script trying to manufacture identities in bulk still hits a wall.
  *
  * ── How a device is recognised ───────────────────────────────────────────────
  *
  * Two independent signals, because neither is sufficient alone.
  *
  *   token        A random id minted server-side and kept in an httpOnly,
- *                Secure, SameSite=Lax cookie. Exact, collision-free, and
- *                invisible to page JavaScript, so it cannot be read or forged
- *                by script running on the page. This is the real rule, and it
- *                is hard-limited to one registration.
+ *                Secure, SameSite=Lax cookie. Exact and collision-free: it
+ *                identifies one browser profile and nothing else, and page
+ *                JavaScript cannot read or forge it. This is the real control.
  *
- *   environment  A digest of the client IP and a coarsened user agent. Exists
- *                only because the cookie is defeated by clearing site data.
- *                A backstop — never treated as an identity.
+ *   environment  A digest of the client address and a coarsened user agent.
+ *                Exists only because the cookie is defeated by clearing site
+ *                data or opening a private window. It collides between
+ *                unrelated people behind carrier-grade NAT, so it is given
+ *                several times the token layer's headroom and is treated as a
+ *                backstop, never as an identity.
  *
  * Both are stored only as HMAC-SHA256 digests keyed with a server-side pepper.
- * The raw IP and user agent are never written anywhere. Without the pepper the
- * digests cannot be reversed, nor brute-forced from a list of candidate IPs, so
- * a leak of the table reveals nothing about who registered from where.
+ * The raw address and user agent are never written anywhere, and the digest is
+ * never sent to the client.
  *
  * ── Why deliberate fingerprinting was rejected ───────────────────────────────
  *
- * Canvas, font, WebGL and audio fingerprinting would survive a cookie clear
- * more often. They were not used: they collect far more about a voter than an
- * electoral service has any business collecting, they are trivially defeated by
- * the privacy tooling that increasingly ships on by default, and the resulting
- * identifier is unstable across ordinary browser updates. Trading voter privacy
- * for an identifier that is *still* bypassable is a bad deal.
+ * Canvas, font, WebGL and audio fingerprinting would survive a cookie clear more
+ * often. They collect far more about a voter than an electoral service has any
+ * business collecting, they are defeated by privacy tooling that increasingly
+ * ships on by default, and the resulting identifier is unstable across ordinary
+ * browser updates. Trading voter privacy for an identifier that is *still*
+ * bypassable is a bad deal.
  *
  * ── The honest limitation ────────────────────────────────────────────────────
  *
  * There is no way on the open web to bind a registration to a physical device
  * such that a determined person cannot defeat it. Someone who clears cookies
- * AND changes network can register again. What this layer does is raise the
- * cost of bulk abuse from "click register repeatedly" to "clear state and move
- * network for every single registration", while the phone-uniqueness constraint
- * and per-phone rate limit continue to bound the damage. It is a speed bump on
- * a road that also has a gate, not a gate of its own.
+ * and changes network can register again. What this layer does is raise the cost
+ * of bulk abuse while the phone-uniqueness constraint and the per-phone rate
+ * limit continue to bound the damage. It is a speed bump on a road that also has
+ * a gate, and it is not evidence about any individual registration: hitting a
+ * limit means a threshold was crossed, never that a voter did anything wrong.
  */
 
 export const DEVICE_COOKIE = 'device_id'
@@ -53,44 +73,88 @@ export const DEVICE_COOKIE = 'device_id'
 const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 730
 
 /**
- * The rule as stated: one browser profile, one registration.
+ * The policy, in one place.
  *
- * Exact and collision-free, so there is no reason to allow slack here.
+ * Two windows rather than one, and they do very different amounts of work.
+ *
+ * The BURST window is the control that matters. Filling in a name, a date of
+ * birth, a phone number and a constituency takes a person a minute or two and
+ * takes a script a second, so a short window separates the two cleanly: it is
+ * invisible to everyone registering by hand and expensive for anything
+ * automated. This is where the anti-abuse value lives.
+ *
+ * The DAILY figures are sanity ceilings, not the policy. They were originally
+ * set low enough to be the binding constraint, and that was a mistake: a daily
+ * cap cannot tell a registration desk apart from a bot — it only counts — so it
+ * fell hardest on shared laptops and campus Wi-Fi while barely inconveniencing
+ * an attacker, who can simply wait or move network. They are now set well above
+ * any realistic legitimate volume, purely to bound an unattended script left
+ * running overnight.
+ *
+ * The honest reason they are not tighter: measured against a scripted attacker
+ * who changes network whenever refused, tightening these limits by a factor of
+ * eight altered the number of fake registrations achieved by roughly a tenth,
+ * while cutting the number of real voters who could register at one location
+ * from five hundred to one hundred. That trade is not worth making.
+ *
+ * The environment limits are deliberately several times the device limits and
+ * must stay that way. That digest collides between unrelated people who share a
+ * carrier-grade NAT address and happen to run the same class of phone — the same
+ * collapse that forced this codebase's per-IP rate limits to be generous. Tuning
+ * it as tightly as the token layer would refuse real voters in quantity on
+ * polling day.
+ *
+ * If the Commission sees legitimate voters refused during polling, RAISE THE
+ * ENVIRONMENT LIMITS FIRST; they are the ones that can be tripped by strangers.
+ * Setting them to Infinity disables the backstop entirely and leaves the token
+ * layer intact, which is the correct emergency response mid-poll.
+ *
+ * These numbers are an internal security control. They are not stated anywhere
+ * in voter-facing copy, and the refusal messages below deliberately describe
+ * them only in vague terms.
  */
-export const DEVICE_REGISTRATION_LIMIT = 1
+export const REGISTRATION_DEVICE_LIMITS = {
+    burst: { seconds: 10 * 60, device: 5, environment: 40 },
+    daily: { seconds: 24 * 60 * 60, device: 100, environment: 1000 },
+}
 
 /**
- * The backstop limit, deliberately NOT 1.
+ * Shown when the device's own allowance is exhausted.
  *
- * Ghana's mobile networks put very large numbers of subscribers behind very few
- * carrier-grade NAT addresses — the same collapse that forced this codebase's
- * per-IP rate limits to be generous. An environment digest therefore collides
- * between unrelated people who share an address and happen to run the same
- * phone and browser version. Setting this to 1 would refuse real voters in
- * quantity on polling day.
+ * States no threshold and no duration. "Recently" and "shortly" are as specific
+ * as this gets, on purpose: publishing the exact window would tell someone
+ * building identities exactly how long to sleep between attempts, and stating a
+ * figure invites a voter to treat the control as a quota rather than a
+ * backstop.
  *
- * Wrongly refusing a voter is worse than admitting a duplicate that the phone
- * uniqueness constraint catches anyway, so this is tuned to absorb ordinary
- * sharing — a household phone, a crowded network — while a SIM farm still hits
- * a wall within a few attempts.
- *
- * If the Commission sees legitimate voters blocked, RAISE THIS FIRST. Setting
- * it to Infinity disables the backstop entirely and leaves the cookie layer
- * intact, which is the correct emergency response during polling.
+ * It also must not accuse anyone. A shared phone reaching this limit is a phone
+ * doing its job, so the message offers a way forward instead of a verdict.
  */
-export const ENVIRONMENT_REGISTRATION_LIMIT = 3
-
-/** The message the requirement specifies, shown when the cookie layer matches. */
-export const DEVICE_ALREADY_USED = 'This device has already been used to register a voter.'
+export const DEVICE_LIMIT_REACHED =
+    'Several voter registrations have already been completed on this device recently. ' +
+    'Please try again shortly, or contact the Electoral Commission if you need help registering.'
 
 /**
- * Shown when only the fuzzy backstop matched. Worded differently on purpose:
- * this one can be a false positive on a shared network, so it must not accuse
- * the voter of anything and must offer a way through.
+ * Shown when only the fuzzy backstop matched.
+ *
+ * Worded differently on purpose: this one can be a false positive for someone
+ * who has done nothing at all except share a network with strangers, so it must
+ * not refer to "this device" or imply the voter has registered before.
  */
-export const ENVIRONMENT_ALREADY_USED =
-    'We could not complete this registration from this connection. If you have not registered ' +
-    'before, please contact the Electoral Commission.'
+export const ENVIRONMENT_LIMIT_REACHED =
+    'We could not complete this registration from this connection right now. Please try again ' +
+    'later, or contact the Electoral Commission if you have not registered before.'
+
+/** Which message a refusal reason maps to. Unknown reasons take the softer one. */
+const REFUSAL_MESSAGES = {
+    device_burst: DEVICE_LIMIT_REACHED,
+    device_daily: DEVICE_LIMIT_REACHED,
+    environment_burst: ENVIRONMENT_LIMIT_REACHED,
+    environment_daily: ENVIRONMENT_LIMIT_REACHED,
+}
+
+/** Roughly one registration in fifty also clears out expired events. */
+const PRUNE_PROBABILITY = 0.02
 
 /**
  * The pepper for both digests.
@@ -174,7 +238,7 @@ export function setDeviceCookie(response, deviceId) {
 }
 
 /**
- * Whether this device may complete a registration.
+ * Whether this device may complete another registration right now.
  *
  * Fails **open** on every error, which is the opposite of the rate limiter and
  * is deliberate. The rate limiter guards the door against brute force, so it
@@ -184,7 +248,11 @@ export function setDeviceCookie(response, deviceId) {
  * is to let people register, not to halt the franchise. A missing device
  * restriction is a lesser harm than a stopped election.
  *
- * @returns {Promise<{ allowed: boolean, message?: string }>}
+ * `retryAfterSeconds` is returned for server-side logging only. The route does
+ * not put it on the response: an exact countdown would publish the width of the
+ * window to anyone willing to read a header.
+ *
+ * @returns {Promise<{ allowed: boolean, message?: string, reason?: string, retryAfterSeconds?: number }>}
  */
 export async function checkDeviceEligibility(supabase, { deviceId, ip, userAgent }) {
     const tokenHash = deviceTokenHash(deviceId)
@@ -192,13 +260,17 @@ export async function checkDeviceEligibility(supabase, { deviceId, ip, userAgent
 
     if (!tokenHash && !envHash) return { allowed: true }
 
+    const { burst, daily } = REGISTRATION_DEVICE_LIMITS
+
     const { data, error } = await supabase.rpc('check_registration_device', {
         p_token_hash: tokenHash,
         p_environment_hash: envHash,
-        p_token_limit: DEVICE_REGISTRATION_LIMIT,
-        p_environment_limit: Number.isFinite(ENVIRONMENT_REGISTRATION_LIMIT)
-            ? ENVIRONMENT_REGISTRATION_LIMIT
-            : 2147483647,
+        p_burst_seconds: burst.seconds,
+        p_token_burst_limit: burst.device,
+        p_environment_burst_limit: asLimit(burst.environment),
+        p_daily_seconds: daily.seconds,
+        p_token_daily_limit: daily.device,
+        p_environment_daily_limit: asLimit(daily.environment),
     })
 
     if (error) {
@@ -211,12 +283,23 @@ export async function checkDeviceEligibility(supabase, { deviceId, ip, userAgent
 
     return {
         allowed: false,
-        message: row.reason === 'device' ? DEVICE_ALREADY_USED : ENVIRONMENT_ALREADY_USED,
+        reason: row.reason,
+        retryAfterSeconds: row.retry_after_seconds ?? null,
+        message: REFUSAL_MESSAGES[row.reason] ?? ENVIRONMENT_LIMIT_REACHED,
     }
 }
 
 /**
- * Charges a completed registration to this device.
+ * Postgres has no infinity for an integer parameter, so a disabled limit is
+ * sent as the largest one it will accept. Anything finite passes through
+ * unchanged.
+ */
+function asLimit(value) {
+    return Number.isFinite(value) ? value : 2147483647
+}
+
+/**
+ * Records a completed registration against this device's digests.
  *
  * Best effort: a failure here must never turn a registration the voter has
  * already completed into an error, so it is logged and swallowed.
@@ -232,4 +315,15 @@ export async function recordDeviceRegistration(supabase, { deviceId, ip, userAge
     })
 
     if (error) console.error('[device-registration] could not record device', error)
+
+    // Housekeeping must never decide whether a voter gets registered, so this is
+    // fire-and-forget and its failure is swallowed. Rows outlive the longest
+    // window by a wide margin before they are removed, so pruning can never
+    // return capacity early.
+    if (Math.random() < PRUNE_PROBABILITY) {
+        supabase.rpc('prune_registration_events').then(
+            () => {},
+            () => {}
+        )
+    }
 }

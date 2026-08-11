@@ -57,32 +57,42 @@ export default function TermsPage() {
                     the election, may be an offence. We record and report such attempts.
                 </p>
 
-                <h2>One device, one registration</h2>
+                <h2>Sharing a device</h2>
                 <p>
-                    Each device may be used to complete one voter registration. If a registration
-                    has already been completed on the device you are using, you will not be able to
-                    start another one from it. This is an anti-abuse measure, not a judgement about
-                    you: if you have not registered before and are prevented from doing so, contact
-                    the {ELECTORAL_COMMISSION} and we will help you register.
+                    More than one person may register from the same phone or computer. We know that
+                    many voters will register from a friend&apos;s phone, a family phone, a school
+                    computer or an internet café, and the service is built to allow it. Where
+                    possible, complete one registration per device, so that everyone waiting to use
+                    it gets through.
                 </p>
                 <p>
-                    Households that share a single phone should be aware of this. Where a genuine
-                    need to register more than one voter from one device arises, the Commission can
-                    arrange it.
+                    Registration is separately protected against automated and bulk abuse, so a
+                    device used for a large number of registrations in a short time may be asked to
+                    wait before another can be completed. This is an anti-abuse measure and not a
+                    judgement about anyone: if you have not registered before and cannot complete
+                    your registration, contact the {ELECTORAL_COMMISSION} and we will help you.
+                </p>
+                <p>
+                    None of this affects voting. Once you are registered you can sign in and cast
+                    your ballot from any device, whether or not you registered on it, and several
+                    registered voters may vote one after another from the same device.
                 </p>
 
                 <h2>Technical measures we use</h2>
                 <p>
                     The {ELECTORAL_COMMISSION} uses technical measures to protect the integrity of
-                    the election and to prevent duplicate or automated registration. These include
-                    limits on how often registration and sign-in may be attempted, and a check that
-                    recognises a device that has already been used to register.
+                    the election and to prevent duplicate, bulk or automated registration. These
+                    include limits on how often registration and sign-in may be attempted, and
+                    checks that recognise repeated registration from the same place or equipment.
+                    We do not publish the thresholds these checks use, because doing so would tell
+                    anyone trying to abuse the service exactly how to stay under them.
                 </p>
                 <p>
-                    These checks record only what is needed to detect repeated use. They do not
-                    record your location, they do not build a profile of you, and they are never
-                    connected to the ballot you cast. How your information is handled is set out in
-                    the <a href="/privacy">privacy notice</a>.
+                    These checks record only what is needed to detect repeated use, and only for as
+                    long as that takes. They do not record your location, they do not build a
+                    profile of you, and they play no part in deciding whether your ballot is
+                    accepted. How your information is handled is set out in the{' '}
+                    <a href="/privacy">privacy notice</a>.
                 </p>
 
                 <h2>Accuracy of the details you give</h2>

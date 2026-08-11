@@ -153,7 +153,13 @@ export const RATE_LIMITS = {
     // ballot and only needs a retry or two if the network drops.
     vote: { limit: 5, window: '1 h' },
 
-    registerIp: { limit: 40, window: '1 h' },
+    // Raised from 40 after simulating a registration drive: at 40, a hundred
+    // voters arriving inside an hour behind one carrier-NAT address saw sixty
+    // of them refused, and a campus of five hundred lost a fifth of its voters
+    // to this limit alone. It is consumed before validation, so mistyped
+    // attempts count against it too. 300 clears every realistic legitimate
+    // location while still capping a script on a fixed address.
+    registerIp: { limit: 300, window: '1 h' },
     registerPhone: { limit: 4, window: '24 h' },
 
     loginIp: { limit: 60, window: '1 h' },

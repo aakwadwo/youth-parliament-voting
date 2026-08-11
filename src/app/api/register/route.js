@@ -120,11 +120,20 @@ export async function POST(request) {
         return noStore(jsonError(ALREADY_REGISTERED, 409, ERROR_CODES.ALREADY_REGISTERED))
     }
 
-    // One device, one registration (migration 0014). Checked here rather than
-    // earlier so that a voter who simply mistyped their name or picked the
-    // wrong constituency is not charged a device slot for an attempt that was
+    // How many voters this device has registered recently (migration 0016).
+    // A device may enrol several people — a household phone and a school
+    // computer are how a great many voters will reach this form — but not an
+    // unbounded number, and not at machine speed.
+    //
+    // Checked here rather than earlier so that a voter who simply mistyped
+    // their name, picked the wrong constituency or re-entered a number that is
+    // already registered is not charged a device slot for an attempt that was
     // never going to create a row. Read-only — the device is charged only after
     // the insert below actually succeeds.
+    //
+    // Nothing about this decision reaches the ballot: registration_events is
+    // never read when authorising a vote, and a voter registered here may sign
+    // in and vote from any device at all.
     const deviceSignals = {
         deviceId: request.cookies.get(DEVICE_COOKIE)?.value,
         ip,
@@ -132,6 +141,13 @@ export async function POST(request) {
     }
     const device = await checkDeviceEligibility(supabase, deviceSignals)
     if (!device.allowed) {
+        // Deliberately no Retry-After. The refusal is genuine and the voter is
+        // told to try again later in words, but publishing an exact countdown
+        // would hand out the width of the window — which is a security control,
+        // not something a voter needs to know to the second.
+        console.warn(
+            `[register] device limit reached (${device.reason}), retry in ${device.retryAfterSeconds}s`
+        )
         return noStore(jsonError(device.message, 409, ERROR_CODES.DEVICE_LIMIT))
     }
 
