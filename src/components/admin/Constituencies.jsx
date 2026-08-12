@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Plus, ArrowLeft, Search, Upload, RefreshCw } from 'lucide-react'
+import { Plus, ArrowLeft, Search, Upload, RefreshCw, Pencil } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,7 +12,9 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState, Spinner } from '@/components/ui/feedback'
 import { DataTable } from '@/components/ui/data-table'
 import { SectionHeader } from '@/components/admin/SectionHeader'
+import { EditNameDialog } from '@/components/admin/EditNameDialog'
 import { useFetch } from '@/lib/useFetch'
+import { normaliseName } from '@/lib/validation'
 
 const MAX_IMPORT_ROWS = 500
 
@@ -105,6 +107,10 @@ export default function Constituencies() {
     const [csvWarnings, setCsvWarnings] = useState([])
     const [csvLoading, setCsvLoading] = useState(false)
     const [successMessage, setSuccessMessage] = useState('')
+    // The constituency whose name is being corrected, or null.
+    const [editing, setEditing] = useState(null)
+    const [editSaving, setEditSaving] = useState(false)
+    const [editError, setEditError] = useState('')
 
     const regions = useMemo(
         () => [...new Set(constituencies.map((c) => c.region).filter(Boolean))].sort(),
@@ -200,6 +206,46 @@ export default function Constituencies() {
         }
     }
 
+    /**
+     * Saves a corrected constituency name.
+     *
+     * PATCHes the existing row by id, so the constituency keeps its id, its
+     * code, its region and every candidate and registration pointing at it. A
+     * rename is a rename, never a new constituency.
+     */
+    async function handleEditSave(name) {
+        const constituency = editing
+        if (!constituency) return
+
+        setEditSaving(true)
+        setEditError('')
+        try {
+            const res = await fetch(`/api/admin/constituencies/${constituency.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name }),
+            })
+            const data = await res.json()
+
+            if (!res.ok) {
+                setEditError(data.error ?? 'Could not rename the constituency.')
+                return
+            }
+
+            setEditing(null)
+            setSuccessMessage(
+                constituency.name === data.constituency.name
+                    ? `${data.constituency.name} is unchanged.`
+                    : `“${constituency.name}” renamed to “${data.constituency.name}”.`
+            )
+            reload()
+        } catch {
+            setEditError('Could not reach the server. Please try again.')
+        } finally {
+            setEditSaving(false)
+        }
+    }
+
     const filtered = useMemo(() => {
         const term = search.trim().toLowerCase()
         return constituencies.filter((c) => {
@@ -242,6 +288,28 @@ export default function Constituencies() {
                     </Badge>
                 )
             },
+        },
+        {
+            key: 'actions',
+            header: 'Actions',
+            align: 'right',
+            cell: (c) => (
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                        setEditError('')
+                        setEditing(c)
+                    }}
+                >
+                    <Pencil aria-hidden="true" />
+                    Edit
+                    {/* The visible label is the same on every row, so the row's
+                        own name is what tells a screen-reader user which
+                        constituency this button belongs to. */}
+                    <span className="sr-only"> name of {c.name}</span>
+                </Button>
+            ),
         },
     ]
 
@@ -503,6 +571,36 @@ Tema West,Greater Accra,2
                     </CardContent>
                 </Card>
             ) : null}
+
+            <EditNameDialog
+                open={Boolean(editing)}
+                onOpenChange={(open) => {
+                    if (!open && !editSaving) {
+                        setEditing(null)
+                        setEditError('')
+                    }
+                }}
+                recordId={editing?.id ?? null}
+                title="Edit constituency name"
+                description={
+                    editing
+                        ? `Code ${editing.code} · ${editing.region}. Only the name changes — the code, the region and every candidate and registration in this constituency stay as they are.`
+                        : undefined
+                }
+                label="Constituency name"
+                fieldId="edit_constituency_name"
+                initialValue={editing?.name ?? ''}
+                placeholder="e.g. Accra Central"
+                // Deliberately not the person-name rule used for candidates:
+                // real constituencies here include "Nalerigu/Gambaga", which
+                // that rule rejects.
+                validate={(value) =>
+                    normaliseName(value) ? null : 'Enter the constituency name.'
+                }
+                saving={editSaving}
+                error={editError}
+                onSave={handleEditSave}
+            />
         </div>
     )
 }

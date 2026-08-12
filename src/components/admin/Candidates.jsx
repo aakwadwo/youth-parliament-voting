@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Image from 'next/image'
-import { Plus, ArrowLeft, Search, RefreshCw, FileDown } from 'lucide-react'
+import { Plus, ArrowLeft, Search, RefreshCw, FileDown, Pencil } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,6 +15,7 @@ import { DataTable } from '@/components/ui/data-table'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { ConstituencyCombobox } from '@/components/ConstituencyCombobox'
 import { SectionHeader } from '@/components/admin/SectionHeader'
+import { EditNameDialog } from '@/components/admin/EditNameDialog'
 import { useFetch } from '@/lib/useFetch'
 import { downloadExport } from '@/lib/download'
 import { isValidName } from '@/lib/validation'
@@ -55,6 +56,10 @@ export default function Candidates() {
     const [successMessage, setSuccessMessage] = useState('')
     const [pendingToggle, setPendingToggle] = useState(null)
     const [toggling, setToggling] = useState(false)
+    // The candidate whose name is being corrected, or null.
+    const [editing, setEditing] = useState(null)
+    const [editSaving, setEditSaving] = useState(false)
+    const [editError, setEditError] = useState('')
     const [downloadingList, setDownloadingList] = useState(false)
     // Its own error rather than the list's: "could not load candidates", with a
     // reload button beside it, is the wrong thing to say when the candidates
@@ -200,6 +205,47 @@ export default function Candidates() {
         }
     }
 
+    /**
+     * Saves a corrected candidate name.
+     *
+     * Sends only `full_name`. The route's field allowlist leaves everything it
+     * is not sent alone, so the candidate keeps their id, their constituency,
+     * their photograph and whether they are standing — and any ballots already
+     * cast for them continue to point at the same row.
+     */
+    async function handleEditSave(fullName) {
+        const candidate = editing
+        if (!candidate) return
+
+        setEditSaving(true)
+        setEditError('')
+        try {
+            const res = await fetch(`/api/admin/candidates/${candidate.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ full_name: fullName }),
+            })
+            const data = await res.json()
+
+            if (!res.ok) {
+                setEditError(data.error ?? 'Could not rename the candidate.')
+                return
+            }
+
+            setEditing(null)
+            setSuccessMessage(
+                candidate.full_name === data.candidate.full_name
+                    ? `${data.candidate.full_name} is unchanged.`
+                    : `“${candidate.full_name}” renamed to “${data.candidate.full_name}”.`
+            )
+            reloadCandidates()
+        } catch {
+            setEditError('Could not reach the server. Please try again.')
+        } finally {
+            setEditSaving(false)
+        }
+    }
+
     const filtered = useMemo(() => {
         const term = search.trim().toLowerCase()
         return candidates.filter((c) => {
@@ -265,14 +311,28 @@ export default function Candidates() {
             header: 'Actions',
             align: 'right',
             cell: (c) => (
-                <Button
-                    variant={c.is_active ? 'destructive-soft' : 'outline'}
-                    size="sm"
-                    onClick={() => setPendingToggle(c)}
-                >
-                    {c.is_active ? 'Withdraw' : 'Restore'}
-                    <span className="sr-only"> {c.full_name}</span>
-                </Button>
+                <div className="flex justify-end gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                            setEditError('')
+                            setEditing(c)
+                        }}
+                    >
+                        <Pencil aria-hidden="true" />
+                        Edit
+                        <span className="sr-only"> name of {c.full_name}</span>
+                    </Button>
+                    <Button
+                        variant={c.is_active ? 'destructive-soft' : 'outline'}
+                        size="sm"
+                        onClick={() => setPendingToggle(c)}
+                    >
+                        {c.is_active ? 'Withdraw' : 'Restore'}
+                        <span className="sr-only"> {c.full_name}</span>
+                    </Button>
+                </div>
             ),
         },
     ]
@@ -582,6 +642,39 @@ export default function Candidates() {
                 tone={pendingToggle?.is_active ? 'destructive' : 'default'}
                 pending={toggling}
                 onConfirm={confirmToggle}
+            />
+
+            <EditNameDialog
+                open={Boolean(editing)}
+                onOpenChange={(open) => {
+                    if (!open && !editSaving) {
+                        setEditing(null)
+                        setEditError('')
+                    }
+                }}
+                recordId={editing?.id ?? null}
+                title="Edit candidate name"
+                description={
+                    editing
+                        ? `Standing in ${editing.constituencies?.name ?? 'no constituency'}. Only the name changes — their constituency, photograph, standing status and any ballots already cast for them are unaffected.`
+                        : undefined
+                }
+                label="Full name"
+                fieldId="edit_candidate_name"
+                initialValue={editing?.full_name ?? ''}
+                placeholder="e.g. Kwame Mensah"
+                // The same rule the add form and the API apply, so a name
+                // accepted here cannot be refused by the server.
+                validate={(value) => {
+                    if (!value.trim()) return 'Enter the candidate’s full name.'
+                    if (!isValidName(value)) {
+                        return 'Use letters, spaces, hyphens and apostrophes only.'
+                    }
+                    return null
+                }}
+                saving={editSaving}
+                error={editError}
+                onSave={handleEditSave}
             />
         </div>
     )

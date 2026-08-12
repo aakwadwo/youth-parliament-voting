@@ -20,6 +20,9 @@ export const AUDIT_ACTIONS = {
     CANDIDATE_DEACTIVATED: 'candidate_deactivated',
     CONSTITUENCY_CREATED: 'constituency_created',
     CONSTITUENCY_IMPORTED: 'constituency_imported',
+    // Renaming a constituency changes a label the whole platform renders, so
+    // the entry carries the previous name as well as the new one.
+    CONSTITUENCY_UPDATED: 'constituency_updated',
     RESULTS_EXPORTED: 'results_exported',
     // Releasing the count to the public, and withdrawing it again. Recorded
     // separately from the export because exporting a report is an internal act
@@ -27,6 +30,9 @@ export const AUDIT_ACTIONS = {
     RESULTS_PUBLISHED: 'results_published',
     RESULTS_UNPUBLISHED: 'results_unpublished',
     CANDIDATE_LIST_EXPORTED: 'candidate_list_exported',
+    // Aggregate registration figures leaving the portal as a document. Recorded
+    // with the totals it stated, so the trail shows what was circulated.
+    REGISTRATION_STATS_EXPORTED: 'registration_stats_exported',
 }
 
 export async function logAdminAction(supabase, action, { actor, ip, entity, ...details } = {}) {

@@ -232,9 +232,12 @@ function drawConstituencyHeading(doc, constituency, { continued = false } = {}) 
     doc.rect(PAGE.margin, y, width, 22).fill(BRAND.zebra)
     doc.rect(PAGE.margin, y, 3, 22).fill(BRAND.gold)
 
-    const label = constituency.code
-        ? `CONSTITUENCY: ${constituency.name}  (${constituency.code})`
-        : `CONSTITUENCY: ${constituency.name}`
+    // The constituency's internal code is deliberately not printed. It is a
+    // database identifier used by the CSV import and the admin portal, and a
+    // bare number beside a seat's name on a public document is something a
+    // reader has to decode rather than read. The name identifies the seat; the
+    // code stays on the register object for the application's own use.
+    const label = `CONSTITUENCY: ${constituency.name}`
 
     doc.font('Helvetica-Bold')
         .fontSize(9.5)

@@ -6,6 +6,7 @@ import {
     LayoutDashboard,
     MapPin,
     Users,
+    UserCheck,
     BarChart3,
     FileDown,
     Settings as SettingsIcon,
@@ -17,6 +18,7 @@ import {
 import Dashboard from '@/components/admin/Dashboard'
 import Constituencies from '@/components/admin/Constituencies'
 import Candidates from '@/components/admin/Candidates'
+import RegistrationStats from '@/components/admin/RegistrationStats'
 import Results from '@/components/admin/Results'
 import Reports from '@/components/admin/Reports'
 import Settings from '@/components/admin/Settings'
@@ -30,6 +32,9 @@ const SECTIONS = [
     { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, Component: Dashboard },
     { key: 'constituencies', label: 'Constituencies', icon: MapPin, Component: Constituencies },
     { key: 'candidates', label: 'Candidates', icon: Users, Component: Candidates },
+    // Between the setup sections and the outcome: who is on the register, before
+    // what they decided.
+    { key: 'registration', label: 'Registration', icon: UserCheck, Component: RegistrationStats },
     { key: 'results', label: 'Results', icon: BarChart3, Component: Results },
     { key: 'reports', label: 'Reports', icon: FileDown, Component: Reports },
     { key: 'settings', label: 'Settings', icon: SettingsIcon, Component: Settings },
