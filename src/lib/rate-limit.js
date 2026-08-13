@@ -162,7 +162,31 @@ export const RATE_LIMITS = {
     registerIp: { limit: 300, window: '1 h' },
     registerPhone: { limit: 4, window: '24 h' },
 
-    loginIp: { limit: 60, window: '1 h' },
+    // Raised from 60 on 2026-08-13, for the reason stated at the top of this
+    // block and never applied here: `registerIp` was given carrier-NAT headroom
+    // and this was left at a figure that would refuse most of the electorate.
+    //
+    // Measured against live production during the registration drive: the
+    // busiest single address reached 55 requests in one hour while the platform
+    // was serving only ~200/hour in total, and the busiest address carried a
+    // median 10.4% — peak 32.7% — of all platform volume in its hour. Sign-in
+    // is far more concentrated than registration, because registration spreads
+    // over weeks and every voter signs in on one day. Projecting a 25%
+    // first-hour spike onto 20,000 voters puts the busiest address at roughly
+    // 520 sign-ins in the peak hour on the median share, and about 1,600 on the
+    // peak share. Against 60, that refuses 85-96% of the voters behind it —
+    // and even a deliberately pessimistic 3% concentration still refuses 60%.
+    //
+    // A refusal here is not a delay, it is a lost vote: the limit is consumed
+    // before credentials are checked, the window slides, so a saturated address
+    // stays saturated through the whole peak, and a voter whose 30-minute
+    // ballot session expires has to spend another slot to get back in.
+    //
+    // 2000/hour is 0.55 requests per second from one address: no resource
+    // concern, and still a wall for a script on a fixed address. This does NOT
+    // loosen brute-force protection — `loginPhone` below is the control that
+    // actually bounds guessing, and it is unchanged.
+    loginIp: { limit: 2000, window: '1 h' },
     // Date of birth is low entropy, so this is the limit that matters: it caps
     // an attacker at 8 guesses per day against any single phone number.
     loginPhone: { limit: 8, window: '24 h' },

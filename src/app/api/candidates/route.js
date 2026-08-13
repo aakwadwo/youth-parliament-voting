@@ -47,6 +47,16 @@ export async function GET(request) {
         // Shorter than the five minutes this used to carry: the list is only
         // served while the poll is open, so a cached copy must not outlive the
         // poll closing by much.
-        headers: { 'Cache-Control': 'public, max-age=60, stale-while-revalidate=30' },
+        //
+        // `s-maxage` is what a shared cache in front of this actually keys on;
+        // `max-age` alone reliably reached only the browser. With one variant
+        // per constituency and a whole electorate voting in a day, that was
+        // roughly one origin request per voter instead of one per constituency
+        // per minute. A cached list outliving the poll's close is harmless:
+        // /api/vote re-checks the window inside the writing transaction, so a
+        // stale ballot paper cannot produce an accepted ballot.
+        headers: {
+            'Cache-Control': 'public, max-age=60, s-maxage=60, stale-while-revalidate=30',
+        },
     })
 }

@@ -53,6 +53,63 @@ test('the brute-force limits that matter have not been loosened', () => {
     assert.deepEqual(RATE_LIMITS.adminLoginAccount, { limit: 6, window: '15 m' })
 })
 
+test('the per-IP sign-in limit has carrier-NAT headroom', () => {
+    // Pinned at the value chosen for polling day. Raised from 60 on 2026-08-13.
+    //
+    // Ghana's mobile networks put very large numbers of subscribers behind very
+    // few addresses. Measured on live production during the registration drive,
+    // the busiest single address reached 55 requests in one hour while the
+    // whole platform was serving only ~200/hour, and carried a median 10.4% of
+    // all platform volume in its hour. Sign-in concentrates far harder than
+    // registration, because registration spreads over weeks and every voter
+    // signs in on one day: a 25% first-hour spike across 20,000 voters puts the
+    // busiest address near 520 sign-ins in that hour on the median share. At 60
+    // that refused the overwhelming majority of the voters behind it.
+    assert.deepEqual(RATE_LIMITS.loginIp, { limit: 2000, window: '1 h' })
+})
+
+test('the IP dimension is looser than the identity dimension it backs', () => {
+    // The property rather than the numbers, stated once so that a future edit
+    // which tightens an IP limit towards its identity limit fails here.
+    //
+    // An address is shared by strangers; a phone number is one person. Refusing
+    // on the shared dimension takes the vote away from people who have done
+    // nothing, so the tight caps live on the identity dimension and the IP caps
+    // exist only to bound a script on a fixed address.
+    assert.ok(
+        RATE_LIMITS.loginIp.limit > RATE_LIMITS.loginPhone.limit * 100,
+        'the per-IP sign-in cap must leave room for a whole NAT address of voters'
+    )
+    assert.ok(
+        RATE_LIMITS.registerIp.limit > RATE_LIMITS.registerPhone.limit * 10,
+        'the per-IP registration cap must leave room for a shared address'
+    )
+})
+
+test('the sign-in limits clear a realistic polling-day peak', () => {
+    // The projection this change was made from, as an assertion. If either
+    // figure moves, this states plainly what it has to survive.
+    const ELECTORATE = 20_000
+    const FIRST_HOUR_SHARE = 0.25
+    // Measured share of platform volume carried by the single busiest address.
+    const BUSIEST_ADDRESS_SHARE = 0.104
+
+    const peakHourSignIns = ELECTORATE * FIRST_HOUR_SHARE
+    const onBusiestAddress = peakHourSignIns * BUSIEST_ADDRESS_SHARE
+
+    assert.ok(
+        RATE_LIMITS.loginIp.limit >= onBusiestAddress,
+        `the busiest address expects ~${Math.round(onBusiestAddress)} sign-ins in the peak hour, ` +
+            `but the limit is ${RATE_LIMITS.loginIp.limit}`
+    )
+
+    // And the per-phone cap must still let one voter sign in, fail a couple of
+    // times, and come back after a session expiry — without ever being loose
+    // enough to matter for guessing a date of birth.
+    assert.ok(RATE_LIMITS.loginPhone.limit >= 4, 'a voter needs room for a retry')
+    assert.ok(RATE_LIMITS.loginPhone.limit <= 10, 'the per-phone cap is the brute-force control')
+})
+
 test('an allowed request passes the tuned limit and window through to Postgres', async () => {
     const client = fakeSupabase(allowed)
     const result = await rateLimit('loginPhone', '+233241234567', RATE_LIMITS.loginPhone, {

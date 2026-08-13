@@ -151,6 +151,43 @@ test('the read-only consumer of the constituency list does cache it', () => {
     assert.match(CANDIDATES_UI, /useFetch\('\/api\/admin\/constituencies', \{[\s\S]*?cacheTtl:/)
 })
 
+// ── Shared-cache headers on the voter-facing GET routes ──────────────────────
+
+test('every cacheable voter-facing GET states s-maxage, not just max-age', () => {
+    // `max-age` alone reliably reaches only the browser; `s-maxage` is what a
+    // shared cache in front of the app keys on. The candidates list has one
+    // variant per constituency, so without it a whole electorate voting in a
+    // day produces roughly one origin request per voter rather than one per
+    // constituency per minute.
+    const ROUTES = {
+        'api/candidates': [read('src', 'app', 'api', 'candidates', 'route.js'), 60],
+        'api/election': [read('src', 'app', 'api', 'election', 'route.js'), 15],
+        'api/constituencies': [read('src', 'app', 'api', 'constituencies', 'route.js'), 300],
+    }
+
+    for (const [name, [source, seconds]] of Object.entries(ROUTES)) {
+        assert.match(
+            source,
+            new RegExp(`max-age=${seconds}, s-maxage=${seconds}`),
+            `${name} does not pair max-age with a matching s-maxage`
+        )
+    }
+})
+
+test('a cached ballot paper can never produce an accepted ballot', () => {
+    // The safety argument for caching the candidate list at all: the window is
+    // re-checked inside the transaction that writes the vote, so a list served
+    // from cache after the poll closed cannot turn into a counted ballot.
+    const castVote = read('migrations', '0008_harden_cast_vote.up.sql')
+    assert.match(castVote, /v_settings\.voting_closes_at < now\(\)/)
+    assert.match(castVote, /return query select false, 'voting_ended'/)
+
+    // And nothing that refuses a request is ever cacheable.
+    const candidates = read('src', 'app', 'api', 'candidates', 'route.js')
+    assert.match(candidates, /noStore\(\s*\n?\s*jsonError/)
+    assert.match(candidates, /const \{ response: refusal \} = await requireVotingOpen\(\)/)
+})
+
 // ── One fewer round trip on the hottest path ─────────────────────────────────
 
 test('registration no longer reads the voters table before writing to it', () => {
