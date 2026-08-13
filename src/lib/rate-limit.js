@@ -173,4 +173,17 @@ export const RATE_LIMITS = {
     // Report rendering is expensive; one admin should not be able to queue
     // dozens of PDF builds at once.
     export: { limit: 20, window: '5 m' },
+
+    // Looking a voter up by phone number. Keyed by admin id.
+    //
+    // This is the only endpoint in the platform that returns a row describing a
+    // person, so it is also the only one where a stolen admin session could be
+    // used to walk the register. Postgres will answer this lookup in about a
+    // millisecond, which means the sole thing standing between a leaked cookie
+    // and an enumeration of every Ghanaian mobile number is this limit.
+    //
+    // 60 in fifteen minutes is far more than an administrator working through a
+    // queue of correction requests will ever need, and slow enough that
+    // enumerating a meaningful share of the number space would take years.
+    adminVoterSearch: { limit: 60, window: '15 m' },
 }

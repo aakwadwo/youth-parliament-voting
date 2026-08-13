@@ -185,19 +185,44 @@ test('the policy is windowed, not a lifetime cap', () => {
     assert.ok(daily.environment > daily.device, 'the backstop must be looser than the device limit')
 })
 
-test('the stated policy is 5 per ten minutes, with a daily ceiling of 100', () => {
+test('the stated policy is 20 per ten minutes, with a daily ceiling of 300', () => {
     // Pinned deliberately: these are the figures the Commission agreed, and a
     // change to them should have to be made on purpose.
     //
     // The burst window carries the anti-abuse work; the daily figure is a
     // ceiling set well above any legitimate volume, so that a registration desk
     // or a shared laptop is never the thing it stops.
+    //
+    // Raised from 5/100 on 2026-08-13 after production measurement showed both
+    // device figures binding on real voters: across 4,155 registrations in 24
+    // hours, 81 separate devices peaked at exactly 5 in a ten-minute window and
+    // none exceeded it, and one device sat at exactly 100 for the day. See the
+    // note on REGISTRATION_DEVICE_LIMITS.
     assert.deepEqual(REGISTRATION_DEVICE_LIMITS.burst.seconds, 600)
-    assert.deepEqual(REGISTRATION_DEVICE_LIMITS.burst.device, 5)
-    assert.deepEqual(REGISTRATION_DEVICE_LIMITS.burst.environment, 40)
+    assert.deepEqual(REGISTRATION_DEVICE_LIMITS.burst.device, 20)
     assert.deepEqual(REGISTRATION_DEVICE_LIMITS.daily.seconds, 86400)
-    assert.deepEqual(REGISTRATION_DEVICE_LIMITS.daily.device, 100)
+    assert.deepEqual(REGISTRATION_DEVICE_LIMITS.daily.device, 300)
+
+    // The environment layer is UNCHANGED, and that is the point of asserting it
+    // here alongside the figures that moved. It collides between strangers
+    // behind one carrier-NAT address, so it is not touched without evidence
+    // that it is the thing refusing someone — and it was measured at a peak of
+    // 9 in a ten-minute window against 40, and 79 in a day against 1000.
+    assert.deepEqual(REGISTRATION_DEVICE_LIMITS.burst.environment, 40)
     assert.deepEqual(REGISTRATION_DEVICE_LIMITS.daily.environment, 1000)
+})
+
+test('a device may still register a queue faster than anyone fills in the form', () => {
+    // The reason the burst figure was raised, expressed as the property rather
+    // than the number: a registration desk must be able to take a person every
+    // half-minute without the platform refusing anyone.
+    const { burst } = REGISTRATION_DEVICE_LIMITS
+    const secondsPerRegistration = burst.seconds / burst.device
+
+    assert.ok(
+        secondsPerRegistration <= 30,
+        `a desk must sustain one registration every 30s (got one per ${secondsPerRegistration}s)`
+    )
 })
 
 test('a shared device serves a queue at human speed without being refused', () => {

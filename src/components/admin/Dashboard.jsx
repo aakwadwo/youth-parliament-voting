@@ -26,6 +26,10 @@ const nf = new Intl.NumberFormat('en-GB')
 
 export default function Dashboard() {
     const { data, loading, error, reload } = useFetch('/api/admin/stats', {
+        // Shared with the other read-only consumer of this endpoint so moving
+        // between Dashboard and Reports does not re-run the aggregates. Short,
+        // because these are live election figures; "Refresh" bypasses it.
+        cacheTtl: 15_000,
         errorMessage: 'Could not load dashboard statistics.',
     })
 

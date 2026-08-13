@@ -59,3 +59,36 @@ export async function getAdminFromRequest(request) {
         return null
     }
 }
+
+/**
+ * The role that may reach voter records.
+ *
+ * `admins.role` has existed since the table was created and has been signed
+ * into the session token all along, but until now nothing read it: `proxy.js`
+ * verifies the signature and every `/api/admin/*` route trusted that alone, so
+ * any administrator was effectively a full administrator. That was harmless
+ * while the portal only ever showed aggregates.
+ *
+ * It stops being harmless with voter search, which is the first surface in the
+ * platform that returns a row describing a person. Checking the role here means
+ * the day a second, lesser account is created — a returning officer who needs
+ * the results screen on polling day, say — it does not silently arrive with
+ * access to the register.
+ */
+export const SUPERADMIN_ROLE = 'superadmin'
+
+/**
+ * Whether this request may act on voter records.
+ *
+ * This is a *second* gate, not the only one: `proxy.js` has already refused
+ * every `/api/admin/*` request without a valid session before any handler runs.
+ * A null admin here therefore means a token that verified in middleware and did
+ * not verify here, which should not happen — so it is treated as a refusal
+ * rather than as an attribution failure, unlike `getAdminFromRequest`.
+ *
+ * @returns {Promise<{ admin: object|null, allowed: boolean }>}
+ */
+export async function requireSuperadmin(request) {
+    const admin = await getAdminFromRequest(request)
+    return { admin, allowed: admin?.role === SUPERADMIN_ROLE }
+}

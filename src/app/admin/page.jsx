@@ -10,6 +10,7 @@ import {
     BarChart3,
     FileDown,
     Settings as SettingsIcon,
+    UserSearch,
     Menu,
     LogOut,
     X,
@@ -19,6 +20,7 @@ import Dashboard from '@/components/admin/Dashboard'
 import Constituencies from '@/components/admin/Constituencies'
 import Candidates from '@/components/admin/Candidates'
 import RegistrationStats from '@/components/admin/RegistrationStats'
+import Voters from '@/components/admin/Voters'
 import Results from '@/components/admin/Results'
 import Reports from '@/components/admin/Reports'
 import Settings from '@/components/admin/Settings'
@@ -35,6 +37,12 @@ const SECTIONS = [
     // Between the setup sections and the outcome: who is on the register, before
     // what they decided.
     { key: 'registration', label: 'Registration', icon: UserCheck, Component: RegistrationStats },
+    // Immediately after the aggregate view, because the two answer consecutive
+    // questions: how many have registered, and then — for the one voter who has
+    // rung in — put their record right. Kept distinct from "Registration" in
+    // both name and icon so that the aggregate screen is never mistaken for a
+    // way into the register.
+    { key: 'voters', label: 'Voter lookup', icon: UserSearch, Component: Voters },
     { key: 'results', label: 'Results', icon: BarChart3, Component: Results },
     { key: 'reports', label: 'Reports', icon: FileDown, Component: Reports },
     { key: 'settings', label: 'Settings', icon: SettingsIcon, Component: Settings },

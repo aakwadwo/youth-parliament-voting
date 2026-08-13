@@ -48,6 +48,10 @@ const CANDIDATE_LIST_ID = 'candidate-list'
 
 export default function Reports() {
     const { data: stats, loading } = useFetch('/api/admin/stats', {
+        // Shared with the other read-only consumer of this endpoint so moving
+        // between Dashboard and Reports does not re-run the aggregates. Short,
+        // because these are live election figures; "Refresh" bypasses it.
+        cacheTtl: 15_000,
         errorMessage: 'Could not load election status.',
     })
 

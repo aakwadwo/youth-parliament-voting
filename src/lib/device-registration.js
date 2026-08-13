@@ -97,6 +97,42 @@ const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 730
  * while cutting the number of real voters who could register at one location
  * from five hundred to one hundred. That trade is not worth making.
  *
+ * ── Why the device figures were raised (2026-08-13) ─────────────────────────
+ *
+ * The first values shipped were 5 per ten minutes and 100 per day. Production
+ * measurement during the live registration drive showed both were binding on
+ * real voters, not on abuse:
+ *
+ *   * Across 4,155 registrations in 24 hours, the peak ten-minute count for 81
+ *     separate device tokens was exactly 5, and NOT ONE device exceeded it. A
+ *     distribution that stops dead on the limit with zero overshoot is the
+ *     signature of a constraint that is binding, not of natural behaviour.
+ *     Those 81 devices are registration desks, school computers and shared
+ *     phones — the exact population this module documents itself as protecting.
+ *
+ *   * One device had reached exactly 100 registrations in 24 hours and was
+ *     refused outright; eleven more were past 50 and climbing.
+ *
+ * A refusal writes no row, so the number of voters actually turned away is not
+ * recoverable from the database — only the clamp is visible. 20 per ten minutes
+ * is still a rate no hand-filled form reaches (it allows one registration every
+ * 30 seconds, sustained), and 300 a day still bounds an unattended script,
+ * while leaving a busy desk room to work.
+ *
+ * The environment figures are deliberately UNCHANGED. They were measured over
+ * the same 24 hours and were nowhere near binding: the busiest environment
+ * digest peaked at 9 registrations in a ten-minute window against a limit of
+ * 40, and at 79 in a day against a limit of 1000. They are also the limits that
+ * can refuse a stranger who merely shares a carrier-NAT address, so they are not
+ * touched without evidence that they are the thing refusing anyone.
+ *
+ * WATCH THIS: raising the device burst to 20 leaves the environment burst only
+ * twice as loose, rather than the eight-fold headroom it had before. The
+ * observed environment peaks were themselves held down by the device limit
+ * upstream of them, so they will rise now. If refusals with reason
+ * `environment_burst` start appearing in the logs, that is this interaction,
+ * and the remedy is the one stated above — raise the environment limits first.
+ *
  * The environment limits are deliberately several times the device limits and
  * must stay that way. That digest collides between unrelated people who share a
  * carrier-grade NAT address and happen to run the same class of phone — the same
@@ -114,8 +150,8 @@ const DEVICE_COOKIE_MAX_AGE = 60 * 60 * 24 * 730
  * them only in vague terms.
  */
 export const REGISTRATION_DEVICE_LIMITS = {
-    burst: { seconds: 10 * 60, device: 5, environment: 40 },
-    daily: { seconds: 24 * 60 * 60, device: 100, environment: 1000 },
+    burst: { seconds: 10 * 60, device: 20, environment: 40 },
+    daily: { seconds: 24 * 60 * 60, device: 300, environment: 1000 },
 }
 
 /**

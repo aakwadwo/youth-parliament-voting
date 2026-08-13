@@ -53,6 +53,71 @@ export const readElection = cache(async function readElection(client) {
 })
 
 /**
+ * How long the *metadata* copy of the election may be reused across requests.
+ *
+ * Deliberately the same 15 seconds `/api/election` already serves to the public
+ * (`Cache-Control: max-age=15`), so this introduces no staleness the platform
+ * did not already accept.
+ */
+const METADATA_TTL_MS = 15 * 1000
+
+/** Module-scoped, so it lives as long as one warm serverless instance. */
+let metadataCache = { expiresAt: 0, value: null }
+
+/**
+ * The election, for rendering a page's <title> and description — and for
+ * NOTHING ELSE.
+ *
+ * ── Why this exists ─────────────────────────────────────────────────────────
+ *
+ * `src/app/layout.js` is `dynamic = 'force-dynamic'` (load-bearing: the CSP
+ * nonce cannot be stamped onto prerendered HTML) and its `generateMetadata`
+ * reads the election so the browser tab names it. That runs for *every* route
+ * in the app, including `/privacy`, `/terms`, `/accessibility` and
+ * `/admin/login` — pages with no other reason to touch the database. React's
+ * `cache()` dedupes within a single request but not across them, so every page
+ * view in the platform cost one Supabase round trip to render a string.
+ *
+ * ── Why it is safe to cache this and not `readElection` ─────────────────────
+ *
+ * This value decides what a tab is called. `readElection` decides whether a
+ * ballot may be cast. Those must not share a cache, and the separation is the
+ * whole point of this function existing rather than a `ttl` option on
+ * `readElection`:
+ *
+ *   NEVER call this from `requireVotingOpen()`, from a voting route, or from
+ *   anything that gates the ballot. Those must stay per-request and fail closed
+ *   (see `requireVotingOpen` below). A stale value there is a ballot served
+ *   after the poll has shut, which is the one outcome an election cannot undo.
+ *
+ * Failure is swallowed and reported as `null`: a metadata read that throws would
+ * take down the page it was decorating, and a deployment with no database
+ * configured must still be able to render its terms of use.
+ *
+ * @returns {Promise<object|null>} the public election object, or null
+ */
+export async function readElectionForMetadata(client) {
+    const now = Date.now()
+    if (metadataCache.expiresAt > now) return metadataCache.value
+
+    try {
+        const { election, error } = await readElection(client)
+        if (error) return null
+
+        metadataCache = { expiresAt: now + METADATA_TTL_MS, value: election }
+        return election
+    } catch {
+        // Not cached: a transient failure must not be held for 15 seconds.
+        return null
+    }
+}
+
+/** Test seam. Never called by application code. */
+export function __resetElectionMetadataCache() {
+    metadataCache = { expiresAt: 0, value: null }
+}
+
+/**
  * The publication decision, as the administrator who has to make it sees it.
  *
  * Distinct from `readElection` on purpose: the public object carries only the

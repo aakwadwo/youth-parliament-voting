@@ -269,6 +269,9 @@ test('no edit control is exposed on a voter-facing page', () => {
     // edit control has leaked onto a screen a voter can reach.
     for (const file of [
         ['src', 'app', 'register', 'page.jsx'],
+        // The form was split out of page.jsx when the constituency list moved
+        // to a server read; the guarantee has to follow it.
+        ['src', 'app', 'register', 'RegisterForm.jsx'],
         ['src', 'app', 'login', 'LoginForm.jsx'],
         ['src', 'app', 'vote', 'candidates', 'Ballot.jsx'],
         ['src', 'app', 'results', 'page.jsx'],

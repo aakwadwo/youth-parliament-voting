@@ -1,7 +1,7 @@
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { ELECTION_NAME, ORGANISATION_NAME } from '@/lib/election'
-import { readElection } from '@/lib/election-server'
+import { readElectionForMetadata } from '@/lib/election-server'
 
 // One variable font, self-hosted and preloaded by next/font. Replaces the
 // previous setup, which downloaded two Geist families that no CSS referenced
@@ -57,12 +57,19 @@ const siteUrl =
  * in Admin → Settings changed the headline of the front page while its tab, its
  * bookmarks and its share previews went on advertising the old name.
  *
- * `readElection` is wrapped in React's per-request `cache`, so a page that also
- * reads the election (the landing page and the details page both do) shares
- * this query rather than issuing a second one. A failed read is not an error
- * worth breaking a page over: the constant is what the platform calls an
- * election it cannot currently look up, exactly as it is on the pages
- * themselves.
+ * `readElectionForMetadata` holds the answer for 15 seconds across requests —
+ * the same freshness `/api/election` already promises the public. This layout
+ * runs for every route in the app, including the policy pages and the admin
+ * sign-in screen, none of which otherwise touch the database at all; without
+ * the cache, naming a browser tab cost one Supabase round trip per page view.
+ *
+ * It is a separate function from `readElection` on purpose. Nothing that
+ * decides whether a ballot may be cast may read a cached election state — see
+ * the warning on `readElectionForMetadata`. This decides what a tab is called.
+ *
+ * A failed read is not an error worth breaking a page over: the constant is what
+ * the platform calls an election it cannot currently look up, exactly as it is
+ * on the pages themselves.
  */
 export async function generateMetadata() {
     // Guarded, unlike the page-level reads. This one runs for *every* route,
@@ -72,7 +79,7 @@ export async function generateMetadata() {
     // must still be able to render its terms of use.
     let electionName = ELECTION_NAME
     try {
-        const { election } = await readElection()
+        const election = await readElectionForMetadata()
         electionName = election?.electionName ?? ELECTION_NAME
     } catch {
         /* fall back to the constant */

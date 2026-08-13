@@ -42,6 +42,12 @@ export default function Candidates() {
     } = useFetch('/api/admin/constituencies', {
         initialData: [],
         errorMessage: 'Could not load constituencies.',
+        // Read-only here — this section only needs the list to populate a
+        // picker, and never edits it. Shared with the other read-only consumers
+        // so switching admin sections does not refetch the same 276 rows.
+        // Constituencies.jsx, which does edit them, deliberately does not cache
+        // and invalidates this entry after every write.
+        cacheTtl: 30_000,
     })
 
     const [search, setSearch] = useState('')

@@ -107,18 +107,20 @@ export async function POST(request) {
 
     const supabase = createAdminClient()
 
-    // Best-effort friendly message. The unique index added in migration 0006 is
-    // what actually prevents a duplicate: without it, two concurrent requests
-    // can both pass this check and both insert.
-    const { data: existing } = await supabase
-        .from('voters')
-        .select('id')
-        .eq('voter_phone', phone)
-        .maybeSingle()
-
-    if (existing) {
-        return noStore(jsonError(ALREADY_REGISTERED, 409, ERROR_CODES.ALREADY_REGISTERED))
-    }
+    // No "is this phone already registered" pre-check.
+    //
+    // There used to be one, immediately before this comment, and it was pure
+    // cost. The unique index `voters_voter_phone_key` (migration 0006) is what
+    // actually prevents a duplicate — the pre-check could not, because two
+    // concurrent requests can both pass it and both proceed to insert. Its only
+    // job was a friendlier message, and the PG_UNIQUE_VIOLATION branch on the
+    // insert below already returns the identical sentence, status and code:
+    // ALREADY_REGISTERED / 409. Removing it changes nothing a caller can
+    // observe, and removes one sequential Supabase round trip from the hottest
+    // path in the platform.
+    //
+    // It also closed a small oracle: the pre-check answered "is this number on
+    // the register?" before the device and validation layers had run.
 
     // How many voters this device has registered recently (migration 0016).
     // A device may enrol several people — a household phone and a school

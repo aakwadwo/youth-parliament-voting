@@ -13,7 +13,7 @@ import { EmptyState, Spinner } from '@/components/ui/feedback'
 import { DataTable } from '@/components/ui/data-table'
 import { SectionHeader } from '@/components/admin/SectionHeader'
 import { EditNameDialog } from '@/components/admin/EditNameDialog'
-import { useFetch } from '@/lib/useFetch'
+import { useFetch, invalidateFetch } from '@/lib/useFetch'
 import { normaliseName } from '@/lib/validation'
 
 const MAX_IMPORT_ROWS = 500
@@ -148,6 +148,9 @@ export default function Constituencies() {
             setFieldErrors({})
             setView('list')
             setSuccessMessage(`${data.name} added successfully.`)
+            // This section owns the constituency list, so a write here must
+            // drop the copy the read-only sections (Candidates, Voters) share.
+            invalidateFetch('/api/admin/constituencies')
             reload()
         } catch {
             setFormError('Could not reach the server. Please try again.')
@@ -197,6 +200,9 @@ export default function Constituencies() {
                 `${data.count} constituencies imported.` +
                     (errors.length > 0 ? ` ${errors.length} row(s) were skipped.` : '')
             )
+            // This section owns the constituency list, so a write here must
+            // drop the copy the read-only sections (Candidates, Voters) share.
+            invalidateFetch('/api/admin/constituencies')
             reload()
         } catch {
             setCsvError('Could not read the file. Please try again.')
@@ -238,6 +244,9 @@ export default function Constituencies() {
                     ? `${data.constituency.name} is unchanged.`
                     : `“${constituency.name}” renamed to “${data.constituency.name}”.`
             )
+            // This section owns the constituency list, so a write here must
+            // drop the copy the read-only sections (Candidates, Voters) share.
+            invalidateFetch('/api/admin/constituencies')
             reload()
         } catch {
             setEditError('Could not reach the server. Please try again.')

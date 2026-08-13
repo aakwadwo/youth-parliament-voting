@@ -472,6 +472,9 @@ test('the section never offers a way to browse the register', () => {
 test('nothing was added to a voter-facing page', () => {
     for (const file of [
         ['src', 'app', 'register', 'page.jsx'],
+        // The form was split out of page.jsx when the constituency list moved
+        // to a server read; the guarantee has to follow it.
+        ['src', 'app', 'register', 'RegisterForm.jsx'],
         ['src', 'app', 'login', 'LoginForm.jsx'],
         ['src', 'app', 'vote', 'candidates', 'Ballot.jsx'],
         ['src', 'app', 'results', 'page.jsx'],

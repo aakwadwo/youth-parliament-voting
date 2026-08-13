@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Check, ChevronsUpDown, Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -14,20 +14,25 @@ import {
 } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import { filterConstituencies } from '@/lib/constituency-search'
 
 /**
  * Constituency picker.
  *
- * A native `<select>` holding 275 options is unusable on a phone, so this is a
- * searchable combobox. Changes from the previous version:
+ * A native `<select>` holding 276 options is unusable on a phone, so this is a
+ * searchable combobox.
  *
  *  - accepts an `id` and the `aria-*` props from <Field>, so the control is
- *    finally associated with its visible label. It previously had none, and a
- *    screen reader announced it only as an unlabelled button.
- *  - shows a loading state rather than an empty list while the constituencies
- *    are still being fetched, which read to the voter as "no results".
+ *    associated with its visible label rather than being announced as an
+ *    unlabelled button.
  *  - lists the region under each name: constituencies with similar names exist
  *    in different regions, and a voter has to be able to tell them apart.
+ *  - filters and ranks in this component rather than in cmdk, so only the rows
+ *    that can match are ever mounted.
+ *
+ * `loading` is retained for callers that still populate this asynchronously.
+ * The registration form no longer does — it receives the list from the server —
+ * so in that flow this control is never in a loading state at all.
  */
 export function ConstituencyCombobox({
     constituencies = [],
@@ -42,10 +47,26 @@ export function ConstituencyCombobox({
     'aria-required': required,
 }) {
     const [open, setOpen] = useState(false)
+    const [search, setSearch] = useState('')
+
     const selected = constituencies.find((c) => c.id === value)
 
+    const { visible, total, truncated } = useMemo(
+        () => filterConstituencies(constituencies, search),
+        [constituencies, search]
+    )
+
     return (
-        <Popover open={open} onOpenChange={setOpen}>
+        <Popover
+            open={open}
+            onOpenChange={(next) => {
+                setOpen(next)
+                // Every open starts from the full list. Reopening the picker to
+                // a stale search term looks like most of the country has gone
+                // missing.
+                if (!next) setSearch('')
+            }}
+        >
             <PopoverTrigger asChild>
                 <Button
                     id={id}
@@ -80,43 +101,39 @@ export function ConstituencyCombobox({
                 align="start"
                 className="w-(--radix-popover-trigger-width) p-0"
                 // Focus deliberately moves into the search field on open. With
-                // 275 constituencies, typing to filter is the primary way to
+                // 276 constituencies, typing to filter is the primary way to
                 // use this control, and suppressing the autofocus to keep the
                 // mobile keyboard down left keyboard users with nowhere to type.
             >
-                {/* cmdk's default scorer is a fuzzy subsequence match, which
-                    ranked "Techiman North" above "Tema West" for the search
-                    "Tema". On a ballot form, where choosing the wrong
-                    constituency means voting in the wrong race, matching has to
-                    be predictable: substring only, with names that start with
-                    the search term ranked above ones that merely contain it,
-                    and region matches last. */}
-                <Command
-                    filter={(value, search) => {
-                        const haystack = value.toLowerCase()
-                        const needle = search.trim().toLowerCase()
-                        if (!needle) return 1
-                        if (haystack.startsWith(needle)) return 1
-                        if (haystack.includes(needle)) return 0.5
-                        return 0
-                    }}
-                >
-                    <CommandInput placeholder="Type a constituency or region…" />
+                {/* shouldFilter={false}: the filtering above has already decided
+                    what may appear, so cmdk must not apply its fuzzy scorer on
+                    top of it and reorder the result. */}
+                <Command shouldFilter={false}>
+                    <CommandInput
+                        placeholder="Type a constituency or region…"
+                        value={search}
+                        onValueChange={setSearch}
+                    />
                     <CommandList className="max-h-64">
-                        <CommandEmpty>
-                            <span className="text-muted-foreground">
-                                No constituency matches that search.
-                            </span>
-                        </CommandEmpty>
+                        {visible.length === 0 ? (
+                            <CommandEmpty>
+                                <span className="text-muted-foreground">
+                                    No constituency matches that search.
+                                </span>
+                            </CommandEmpty>
+                        ) : null}
                         <CommandGroup>
-                            {constituencies.map((c) => (
+                            {visible.map((c) => (
                                 <CommandItem
                                     key={c.id}
-                                    // Searchable by region as well as by name.
-                                    value={`${c.name} ${c.region ?? ''}`}
+                                    // The id, not the name: with filtering done
+                                    // here this value is only an identity, and
+                                    // two constituencies may share a name.
+                                    value={c.id}
                                     onSelect={() => {
                                         onChange(c)
                                         setOpen(false)
+                                        setSearch('')
                                     }}
                                     className="gap-3"
                                 >
@@ -138,6 +155,13 @@ export function ConstituencyCombobox({
                                 </CommandItem>
                             ))}
                         </CommandGroup>
+                        {/* Never let a capped list look like a complete one. */}
+                        {truncated ? (
+                            <p className="px-3 py-2 text-xs text-muted-foreground">
+                                Showing the closest {visible.length} of {total}. Keep typing to
+                                narrow the list.
+                            </p>
+                        ) : null}
                     </CommandList>
                 </Command>
             </PopoverContent>

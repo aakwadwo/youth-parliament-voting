@@ -33,6 +33,13 @@ export const AUDIT_ACTIONS = {
     // Aggregate registration figures leaving the portal as a document. Recorded
     // with the totals it stated, so the trail shows what was circulated.
     REGISTRATION_STATS_EXPORTED: 'registration_stats_exported',
+    // Correcting the constituency on a registration. The only administrative
+    // action in the platform that writes to the `voters` table, and the only
+    // one that changes which ballot paper a person is shown — so the entry
+    // carries the previous constituency as well as the new one. It carries no
+    // name, number or date of birth: see `constituencyChangeAudit` in
+    // `@/lib/voter-admin` for why.
+    VOTER_CONSTITUENCY_CHANGED: 'voter_constituency_changed',
 }
 
 export async function logAdminAction(supabase, action, { actor, ip, entity, ...details } = {}) {

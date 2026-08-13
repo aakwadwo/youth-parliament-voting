@@ -176,37 +176,62 @@ test('17. the ballot still carries no reference to the voter', () => {
 
 // ── Registration route ordering ──────────────────────────────────────────────
 
-test('5/7. the device check sits after validation and the duplicate-phone refusal', () => {
+test('5/7. the device check sits after validation, and charges only a real registration', () => {
     // Call sites, not the import block at the top of the file.
-    const duplicateRefusal = REGISTER_ROUTE.indexOf('jsonError(ALREADY_REGISTERED, 409')
     const deviceCheck = REGISTER_ROUTE.indexOf('await checkDeviceEligibility(')
     const insert = REGISTER_ROUTE.indexOf('.insert({')
     const record = REGISTER_ROUTE.indexOf('await recordDeviceRegistration(')
+    const ageCheck = REGISTER_ROUTE.indexOf('checkAgeEligibility(voter_dob)')
+    const phoneCheck = REGISTER_ROUTE.indexOf('isValidGhanaPhone(phone)')
 
-    assert.ok(duplicateRefusal > 0 && deviceCheck > 0 && insert > 0 && record > 0)
-    assert.ok(
-        duplicateRefusal < deviceCheck,
-        'a duplicate phone must be refused before the device is even consulted'
-    )
-    assert.ok(
-        insert < record,
-        'a device is charged only after the voter row actually exists'
-    )
+    assert.ok(deviceCheck > 0 && insert > 0 && record > 0 && ageCheck > 0 && phoneCheck > 0)
+
+    // The property that matters: a voter who mistyped their name, their number
+    // or their date of birth is never even measured against the device
+    // allowance, let alone charged for it.
+    assert.ok(ageCheck < deviceCheck, 'age is validated before the device is consulted')
+    assert.ok(phoneCheck < deviceCheck, 'the number is validated before the device is consulted')
+
+    // And the allowance is spent only once a voter row actually exists, so a
+    // registration that fails at the unique index costs the device nothing.
+    assert.ok(deviceCheck < insert, 'eligibility is checked before the row is written')
+    assert.ok(insert < record, 'a device is charged only after the voter row actually exists')
 })
 
 test('3. duplicate phone protection is unchanged', () => {
+    // The friendly pre-SELECT that used to sit in front of the insert has been
+    // removed: it could never prevent a duplicate — two concurrent requests can
+    // both pass it — and the unique index is what actually does. What a caller
+    // sees is identical, and that is what is asserted here.
     assert.match(REGISTER_ROUTE, /This phone number is already registered\. Please sign in instead\./)
     assert.match(REGISTER_ROUTE, /jsonError\(ALREADY_REGISTERED, 409, ERROR_CODES\.ALREADY_REGISTERED\)/)
-    // Both the friendly pre-check and the unique-index race path return it.
-    assert.equal(
-        REGISTER_ROUTE.match(/jsonError\(ALREADY_REGISTERED, 409/g).length,
-        2,
-        'the pre-check and the 23505 handler must both return the same refusal'
-    )
     assert.match(REGISTER_ROUTE, /error\.code === PG_UNIQUE_VIOLATION/)
 
+    // Exactly one refusal path now, and it is the one behind the constraint.
+    assert.equal(
+        REGISTER_ROUTE.match(/jsonError\(ALREADY_REGISTERED, 409/g).length,
+        1,
+        'the duplicate refusal should be stated once, on the 23505 handler'
+    )
+
+    // The pre-check must not come back: it is a round trip that decides nothing,
+    // and it answered "is this number on the register?" before any other gate.
+    assert.ok(
+        !/\.from\('voters'\)\s*\.select\('id'\)\s*\.eq\('voter_phone'/.test(REGISTER_ROUTE),
+        'the redundant duplicate-phone pre-check has been reintroduced'
+    )
+
+    // The constraint that does the actual work is still there.
     const index = read('migrations', '0006_add_performance_indexes.up.sql')
     assert.match(index, /create unique index if not exists voters_voter_phone_key\s+on voters \(voter_phone\)/)
+})
+
+test('the registration route makes no redundant reads of the voters table', () => {
+    // One statement touches `voters`: the insert. If a second appears, the
+    // round trip this change removed has grown back somewhere else.
+    const voterReads = REGISTER_ROUTE.match(/\.from\('voters'\)/g) ?? []
+    assert.equal(voterReads.length, 1, 'registration should touch `voters` exactly once')
+    assert.match(REGISTER_ROUTE, /\.from\('voters'\)\s*\.insert\(\{/)
 })
 
 // ── 4 & 16. Nothing about the election itself moved ──────────────────────────
