@@ -25,7 +25,6 @@ import {
     isValidGhanaPhone,
     checkAgeEligibility,
     normalisePhone,
-    dobBounds,
     MIN_AGE,
     MAX_AGE,
 } from '@/lib/validation'
@@ -93,7 +92,6 @@ export default function RegisterForm({ constituencies = [], constituenciesError 
     const inFlight = useRef(false)
     const [registered, setRegistered] = useState(null)
 
-    const bounds = dobBounds()
 
     function update(key, value) {
         setForm((prev) => ({ ...prev, [key]: value }))
@@ -237,10 +235,20 @@ export default function RegisterForm({ constituencies = [], constituenciesError 
                                 type="date"
                                 name="voter_dob"
                                 autoComplete="bday"
-                                // Bounds the native picker to eligible years, so
-                                // an ineligible date cannot be chosen at all.
-                                min={bounds.min}
-                                max={bounds.max}
+                                // Deliberately unbounded. `min`/`max` here did
+                                // not merely bound the picker — several native
+                                // date controls OPEN ON the bound and return it
+                                // if the voter confirms without scrolling, so
+                                // the form silently recorded a date of birth
+                                // nobody had chosen. 545 registrations landed on
+                                // exactly "eighteen years to the day" before the
+                                // day they were made, and those voters were then
+                                // refused at sign-in for typing their real date
+                                // of birth. Eligibility is unaffected: it is
+                                // enforced by VALIDATORS.voter_dob here and by
+                                // checkAgeEligibility() on the server, both of
+                                // which reject an ineligible date with a
+                                // message naming the rule.
                                 value={form.voter_dob}
                                 onChange={(e) => update('voter_dob', e.target.value)}
                                 onBlur={() => handleBlur('voter_dob')}

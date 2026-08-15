@@ -2,7 +2,13 @@ import { NextResponse } from 'next/server'
 
 import { createAdminClient } from '@/lib/supabase-admin'
 import { signVoterToken, setVoterCookie } from '@/lib/voter-session'
-import { isUUID, isValidGhanaPhone, isValidName, checkAgeEligibility } from '@/lib/validation'
+import {
+    isUUID,
+    isValidGhanaPhone,
+    isValidName,
+    checkAgeEligibility,
+    normalisePhone,
+} from '@/lib/validation'
 import { rateLimit, RATE_LIMITS } from '@/lib/rate-limit'
 import { getClientIp, requireSameOrigin, noStore, rateLimitRefusal } from '@/lib/http'
 import {
@@ -60,7 +66,12 @@ export async function POST(request) {
     }
 
     const fullName = typeof full_name === 'string' ? full_name.trim().replace(/\s+/g, ' ') : ''
-    const phone = typeof voter_phone === 'string' ? voter_phone.replace(/[\s-]/g, '') : ''
+    // The same normaliser the validator uses, so the string that is checked is
+    // the string that is stored. With a local replace instead, an international
+    // "+233…" number passed `isValidGhanaPhone` (which normalises internally)
+    // and was then written to the register verbatim — a row whose owner could
+    // never sign in, because sign-in looks up the national form.
+    const phone = normalisePhone(voter_phone)
 
     if (!isValidName(fullName)) {
         return noStore(

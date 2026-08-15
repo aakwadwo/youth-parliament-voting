@@ -21,8 +21,11 @@ import { RATE_LIMITS } from '@/lib/rate-limit'
  * election petition:
  *
  *   1. An administrator can see enough to identify the right voter, and no
- *      more. Specifically, the credential a voter signs in with — their date of
- *      birth alongside their phone number — never leaves the server.
+ *      more. The credential a voter signs in with is their date of birth
+ *      alongside their phone number, and this endpoint never returns both: the
+ *      date of birth is exposed to superadmins so the Commission can read back
+ *      what the register actually holds, and the phone number is masked to its
+ *      last three digits so the pair is never complete.
  *
  *   2. The edit is a constituency correction and nothing else. The record keeps
  *      its id, name, number, date of birth, registration time, verification
@@ -88,15 +91,28 @@ test('the phone number is masked to its last three digits', () => {
     assert.equal(maskPhone('12'), '••')
 })
 
-test('the voter view never carries a date of birth or a raw phone number', () => {
+test('the voter view never carries a raw phone number', () => {
     const view = toAdminVoterView(ROW)
     const serialised = JSON.stringify(view)
 
-    // The two halves of the voter login credential.
-    assert.ok(!('voter_dob' in view), 'the view exposes voter_dob')
     assert.ok(!('voter_phone' in view), 'the view exposes voter_phone')
-    assert.ok(!serialised.includes('2004-03-14'), 'the date of birth reached the payload')
     assert.ok(!serialised.includes('0241234567'), 'the full phone number reached the payload')
+    assert.equal(view.phone_masked, '•••••••567')
+})
+
+test('the voter view carries the stored date of birth, exactly as stored', () => {
+    // Deliberately exposed to superadmins so the Commission can read back what
+    // the register actually holds — a registration carrying a date of birth the
+    // voter never chose cannot be diagnosed otherwise. It is the masked phone
+    // number beside it that stops this being a usable credential pair.
+    const view = toAdminVoterView(ROW)
+
+    assert.equal(view.voter_dob, '2004-03-14')
+    // Never reformatted, defaulted or derived on the way out: the value shown
+    // has to be the value stored, or it cannot be used to resolve a mismatch.
+    assert.equal(view.voter_dob, ROW.voter_dob)
+    assert.equal(toAdminVoterView({ ...ROW, voter_dob: null }).voter_dob, null)
+    assert.equal(toAdminVoterView({ ...ROW, voter_dob: undefined }).voter_dob, null)
 })
 
 test('the voter view carries exactly the fields needed to identify a registration', () => {
@@ -113,6 +129,7 @@ test('the voter view carries exactly the fields needed to identify a registratio
         'is_verified',
         'phone_masked',
         'registered_at',
+        'voter_dob',
     ])
 
     assert.equal(view.full_name, 'Ama Serwaa')
@@ -134,11 +151,26 @@ test('a missing row produces no view at all', () => {
     assert.equal(toAdminVoterView(undefined), null)
 })
 
-test('the selected columns do not include the date of birth', () => {
-    // The projection is the second line of defence; this is the first. What is
-    // never selected cannot be leaked by a future change to the view.
-    assert.ok(!ADMIN_VOTER_COLUMNS.includes('voter_dob'), 'the query selects voter_dob')
+test('the selected columns cover exactly what the view renders', () => {
+    assert.ok(ADMIN_VOTER_COLUMNS.includes('voter_dob'), 'the date of birth is not selected')
     assert.ok(ADMIN_VOTER_COLUMNS.includes('voter_phone'), 'the number is needed to mask it')
+
+    // The projection is what stops a column added to `voters` later riding out
+    // on this endpoint. Asserted as a closed list for that reason.
+    assert.deepEqual(
+        ADMIN_VOTER_COLUMNS.split(',').map((c) => c.trim()).sort(),
+        [
+            'constituencies(name)',
+            'constituency_id',
+            'full_name',
+            'has_voted',
+            'id',
+            'is_verified',
+            'registered_at',
+            'voter_dob',
+            'voter_phone',
+        ]
+    )
 })
 
 // ── Search ───────────────────────────────────────────────────────────────────
@@ -388,11 +420,26 @@ test('no voter data is handed to Sentry', () => {
 
 // ── The screen ───────────────────────────────────────────────────────────────
 
-test('the admin screen cannot display a date of birth or a full number', () => {
-    for (const forbidden of ['voter_dob', 'voter_phone', 'date of birth', 'Date of birth']) {
-        assert.ok(!UI_CODE.includes(forbidden), `the screen references "${forbidden}"`)
-    }
+test('the admin screen cannot display a full phone number', () => {
+    // The half of the credential that stays hidden. Showing the date of birth
+    // beside a masked number is a record; showing it beside a full number would
+    // be a working sign-in.
+    assert.ok(!UI_CODE.includes('voter_phone'), 'the screen references voter_phone')
     assert.match(UI, /phone_masked/)
+})
+
+test('the admin screen shows the stored date of birth, read-only', () => {
+    assert.match(UI_CODE, /Date of birth/, 'the date of birth is not labelled on screen')
+    assert.match(UI_CODE, /voter\.voter_dob/, 'the date of birth is not read from the record')
+
+    // Displayed, never edited. The only writable control on this screen is the
+    // constituency picker, and the PATCH body is asserted below to be one key.
+    assert.ok(
+        !/onChange=\{[^}]*voter_dob/.test(UI_CODE),
+        'the date of birth is wired to a change handler'
+    )
+    assert.ok(!/name="voter_dob"/.test(UI_CODE), 'the date of birth is rendered as a form field')
+    assert.ok(!/type="date"/.test(UI_CODE), 'the screen renders a date input')
 })
 
 test('the screen sends a body of exactly one key', () => {

@@ -27,26 +27,43 @@ import { isUUID, normalisePhone, isValidGhanaPhone } from '@/lib/validation'
 /**
  * Everything the search endpoint is permitted to return about a voter.
  *
- * Anything not on this list does not leave the server. Two omissions are
- * load-bearing rather than incidental:
+ * Anything not on this list does not leave the server.
  *
- *   voter_dob    Date of birth plus phone number *is* the voter's credential
- *                (`/api/login` authenticates on exactly that pair). Rendering
- *                it on an admin screen would mean a shoulder-surfed session, a
- *                screenshot in a support thread or a browser cache on a shared
- *                machine hands over the ability to sign in as that voter and
- *                cast their ballot. There is no administrative task that needs
- *                it: the administrator is confirming a person, not
- *                authenticating them.
+ *   voter_dob    Included, deliberately, and the reasoning has changed. This
+ *                was withheld on the grounds that date of birth plus phone
+ *                number is the voter's credential (`/api/login` authenticates
+ *                on exactly that pair), so showing it would let anyone who saw
+ *                an administrator's screen sign in as that voter.
+ *
+ *                That risk is real and unchanged. What changed is the cost of
+ *                withholding it. On polling day a cohort of registrations was
+ *                found to hold a date of birth the voter never chose — a native
+ *                date picker returning its own bound — and those voters cannot
+ *                sign in, because they type their real date and the register
+ *                holds another. The Commission cannot resolve a single one of
+ *                those calls without being able to read back what is actually
+ *                stored. An administrator who cannot see the stored value can
+ *                only tell the voter that their registration does not exist,
+ *                which is both false and unfixable.
+ *
+ *                So it is exposed under the narrowest terms available: to
+ *                superadmins only, on a route that already refuses everyone
+ *                else, in a response that is never cached, beside a phone
+ *                number that stays masked. The half of the credential the
+ *                administrator supplied is the half that is still hidden — a
+ *                screen showing this record does not show a usable credential
+ *                pair, because the number on it is masked to its last three
+ *                digits.
  *
  *   voter_phone  The administrator supplied the number to find the row, so
  *                echoing it back adds nothing and puts it in one more place —
  *                a response body, a browser cache, an error report. A masked
  *                form is returned instead, which is enough to confirm the right
- *                record was found.
+ *                record was found. This omission is unchanged and is what keeps
+ *                the exposure above from completing the credential.
  */
 export const ADMIN_VOTER_COLUMNS =
-    'id, full_name, voter_phone, constituency_id, registered_at, has_voted, is_verified, constituencies(name)'
+    'id, full_name, voter_phone, voter_dob, constituency_id, registered_at, has_voted, is_verified, constituencies(name)'
 
 /**
  * Hides all but the last three digits of a phone number.
@@ -75,6 +92,11 @@ export function toAdminVoterView(row) {
         id: row.id,
         full_name: row.full_name,
         phone_masked: maskPhone(row.voter_phone),
+        // Read straight off the row and never derived, reformatted or defaulted
+        // here: the whole point of showing it is to report what the register
+        // actually holds, so anything this function did to the value would
+        // defeat the reason it is on screen.
+        voter_dob: row.voter_dob ?? null,
         constituency_id: row.constituency_id,
         constituency_name: row.constituencies?.name ?? null,
         registered_at: row.registered_at,

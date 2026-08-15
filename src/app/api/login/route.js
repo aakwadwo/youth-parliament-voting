@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { createAdminClient } from '@/lib/supabase-admin'
 import { signVoterToken, setVoterCookie } from '@/lib/voter-session'
-import { isValidGhanaPhone, isValidDateString } from '@/lib/validation'
+import { isValidGhanaPhone, isValidDateString, normalisePhone } from '@/lib/validation'
 import { requireSameOrigin, noStore } from '@/lib/http'
 import { jsonError, ERROR_CODES } from '@/lib/api-error'
 import { requireVotingOpen } from '@/lib/election-server'
@@ -72,7 +72,14 @@ export async function POST(request) {
         )
     }
 
-    const phone = typeof voter_phone === 'string' ? voter_phone.replace(/[\s-]/g, '') : ''
+    // `normalisePhone`, not a local replace. `isValidGhanaPhone` normalises
+    // internally before testing, so a route that validates one string and then
+    // queries a different one accepts a number as valid and then fails to find
+    // it. That is exactly what happened to every voter whose handset supplied
+    // "+233 24 123 4567": the number passed validation, the lookup ran against
+    // the unnormalised text, and they were told no such registration existed.
+    // The register stores the national form, so the lookup must use it too.
+    const phone = normalisePhone(voter_phone)
 
     if (!isValidGhanaPhone(phone) || !isValidDateString(voter_dob)) {
         return noStore(jsonError(NOT_FOUND, 401, ERROR_CODES.INVALID_CREDENTIALS))

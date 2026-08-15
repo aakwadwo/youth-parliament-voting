@@ -16,7 +16,7 @@ import { ConstituencyCombobox } from '@/components/ConstituencyCombobox'
 import { useFetch } from '@/lib/useFetch'
 import { getJson, request as apiRequest } from '@/lib/api-client'
 import { normalisePhone, isValidGhanaPhone } from '@/lib/validation'
-import { formatWhen } from '@/lib/election-status'
+import { formatWhen, formatDateLong } from '@/lib/election-status'
 
 /**
  * Correcting the constituency on a registration.
@@ -32,11 +32,19 @@ import { formatWhen } from '@/lib/election-status'
  *
  * ── What is deliberately not on screen ──────────────────────────────────────
  *
- * The voter's date of birth, and their full phone number. Those two together
- * are the credential a voter signs in with, so putting them on an
- * administrator's screen would mean anyone who saw that screen could sign in as
- * that voter. The server never sends either — the number comes back masked —
- * and this component could not display them if it wanted to.
+ * The voter's full phone number. It comes back masked to its last three digits
+ * and this component has no unmasked value to render.
+ *
+ * The date of birth IS shown, and that is a considered exception rather than a
+ * relaxation. Date of birth plus phone number is the credential a voter signs
+ * in with, so this screen shows exactly one half of it: the half the
+ * administrator did not already type in, beside a number that stays masked.
+ * Without it the Commission cannot answer the calls this section exists for —
+ * a registration whose stored date of birth is not the one the voter believes
+ * they gave cannot be diagnosed by an administrator who cannot see it.
+ *
+ * It is displayed, never edited. Nothing on this screen writes it, and the
+ * PATCH route refuses a body that so much as names it.
  */
 export default function Voters() {
     // The picker needs the constituency list; this is the admin-side list that
@@ -235,6 +243,12 @@ function VoterCard({ voter, constituencies, constituenciesLoading, onSelectConst
     const rows = [
         ['Name', voter.full_name],
         ['Phone', voter.phone_masked],
+        // `formatDateLong` rather than a raw ISO string: an administrator
+        // reading this back to a voter over the telephone needs "14 March
+        // 2004", because "14/03/2004" and "03/14/2004" are the same characters
+        // arranged into two different days and neither party can tell which was
+        // meant. The underlying value is untouched — only its rendering.
+        ['Date of birth', formatDateLong(voter.voter_dob) || '—'],
         ['Constituency', voter.constituency_name ?? '—'],
         ['Registered', formatWhen(voter.registered_at) || '—'],
     ]
