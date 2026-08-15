@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 
+import { deriveElectionStatus, ELECTION_STATUS } from '../src/lib/election-status.js'
+
 /**
  * The architectural boundary between registering and voting.
  *
@@ -236,16 +238,82 @@ test('the registration route makes no redundant reads of the voters table', () =
 
 // ── 4 & 16. Nothing about the election itself moved ──────────────────────────
 
-test('4. registration is still not gated on the election window', () => {
-    // Deliberate existing behaviour: the register has to be open before the
-    // poll, and a late arrival deserves an explanation rather than an error.
+test('4. registration closes when the poll ends, and only then', () => {
+    // The register must stay open before the poll — SCHEDULED and CLOSED both
+    // still accept a voter — so the gate names ENDED explicitly rather than
+    // reusing requireVotingOpen(), which would refuse every state but OPEN and
+    // shut the register for the entire registration period.
     assert.ok(
         !REGISTER_ROUTE.includes('requireVotingOpen'),
-        'registration must not acquire an election-window gate'
+        'registration must not adopt the ballot gate: it would refuse SCHEDULED too'
     )
-    // What the election state still decides is only whether a ballot session is
-    // worth issuing.
+    assert.match(REGISTER_ROUTE, /gate\?\.status === ELECTION_STATUS\.ENDED/)
+
+    // ENDED is the only status the route refuses on.
+    const statusChecks = REGISTER_ROUTE.match(/ELECTION_STATUS\.\w+/g) ?? []
+    assert.deepEqual(
+        [...new Set(statusChecks)],
+        ['ELECTION_STATUS.ENDED'],
+        'ENDED must be the only status registration refuses on'
+    )
+
+    // Fails closed: an unreadable settings row refuses rather than admitting.
+    assert.match(REGISTER_ROUTE, /if \(gateError\) \{/)
+    assert.match(REGISTER_ROUTE, /Could not confirm the election status/)
+
+    // The gate runs before anything is written, and before the device is even
+    // consulted, so a refused registration costs a device nothing.
+    const gateCheck = REGISTER_ROUTE.indexOf('ELECTION_STATUS.ENDED')
+    const deviceCheck = REGISTER_ROUTE.indexOf('await checkDeviceEligibility(')
+    const insert = REGISTER_ROUTE.indexOf('.insert({')
+    assert.ok(gateCheck > 0 && gateCheck < deviceCheck, 'the gate precedes the device check')
+    assert.ok(gateCheck < insert, 'the gate precedes the insert')
+
+    // What the election state still decides on the success path is only whether
+    // a ballot session is worth issuing.
     assert.match(REGISTER_ROUTE, /if \(!election \|\| isVotingOpen\(election\.status\)\) \{?\s*setVoterCookie/)
+})
+
+test('4. the live election row is the state that closes the register', () => {
+    // The production settings row as it actually stands: active, closing at
+    // 18:00 UTC on polling day. This is the decision the gate reads, so it is
+    // asserted against the real values rather than invented ones.
+    const live = {
+        is_active: true,
+        voting_opens_at: null,
+        voting_closes_at: '2026-08-15T18:00:00+00:00',
+    }
+    const at = (iso) => deriveElectionStatus(live, new Date(iso).getTime())
+
+    // One millisecond before the close the register is open; on the boundary it
+    // is still open, because the ballot itself is (cast_vote refuses only once
+    // closes_at < now). The register must not shut before the poll does.
+    assert.equal(at('2026-08-15T17:59:59.999Z'), ELECTION_STATUS.OPEN)
+    assert.equal(at('2026-08-15T18:00:00.000Z'), ELECTION_STATUS.OPEN)
+
+    // And from the first moment after, every later request is refused —
+    // including the 19:02 registrations that prompted this change.
+    assert.equal(at('2026-08-15T18:00:00.001Z'), ELECTION_STATUS.ENDED)
+    assert.equal(at('2026-08-15T19:02:27.707Z'), ELECTION_STATUS.ENDED)
+    assert.equal(at('2026-08-16T09:00:00.000Z'), ELECTION_STATUS.ENDED)
+})
+
+test('4. a registration period with no poll yet is never refused', () => {
+    // The failure this guards against is shutting the register during the weeks
+    // it most needs to be open. None of these states may be ENDED.
+    const scheduled = deriveElectionStatus(
+        { is_active: true, voting_opens_at: '2026-08-15T06:00:00Z', voting_closes_at: '2026-08-15T18:00:00Z' },
+        new Date('2026-07-01T00:00:00Z').getTime()
+    )
+    assert.equal(scheduled, ELECTION_STATUS.SCHEDULED)
+
+    // An election not configured at all — a fresh deployment taking early
+    // registrations before any window is published.
+    assert.equal(deriveElectionStatus(null, Date.now()), ELECTION_STATUS.CLOSED)
+    assert.equal(
+        deriveElectionStatus({ is_active: false, voting_opens_at: null, voting_closes_at: null }, Date.now()),
+        ELECTION_STATUS.CLOSED
+    )
 })
 
 test('16. no migration in this change writes to the election schedule', () => {

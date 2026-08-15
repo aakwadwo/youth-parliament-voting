@@ -19,7 +19,7 @@ import {
     PG_FOREIGN_KEY_VIOLATION,
 } from '@/lib/api-error'
 import { readElection } from '@/lib/election-server'
-import { isVotingOpen } from '@/lib/election-status'
+import { isVotingOpen, ELECTION_STATUS, electionGateCode } from '@/lib/election-status'
 import {
     checkDeviceEligibility,
     recordDeviceRegistration,
@@ -31,15 +31,25 @@ import {
 const ALREADY_REGISTERED = 'This phone number is already registered. Please sign in instead.'
 
 /**
- * Registration is deliberately NOT gated on the voting window.
+ * Registration is open until the poll closes, and not one moment longer.
  *
- * The register has to be open before the poll — that is the whole point of a
- * registration period — and closing it the moment voting ends would turn a
- * late arrival into an error rather than an explanation. What changes with the
- * election state is only what a voter is offered next, so the state travels
- * back in the success payload and the confirmation screen renders from it.
- * Sending it here rather than letting the page fetch it separately means the
- * screen cannot contradict the decision the server just made.
+ * The register has to be open *before* the poll — that is the whole point of a
+ * registration period — so SCHEDULED and CLOSED both still accept a voter. What
+ * is refused is ENDED, and only ENDED.
+ *
+ * Before that gate existed, a registration arriving after the closing time was
+ * accepted, written to the register and marked verified, yet could never
+ * produce a ballot: cast_vote() refuses with 'voting_ended'. The row was
+ * therefore pure error, and not a harmless one. Turnout is reported as ballots
+ * over registered voters (get_election_stats, migration 0009), so every late
+ * registration grew the denominator of a figure whose numerator was already
+ * final — the published turnout fell, hours after the last ballot was cast.
+ *
+ * What the election state still decides on the success path is only what a
+ * voter is offered next, so the state travels back in the payload and the
+ * confirmation screen renders from it. Sending it here rather than letting the
+ * page fetch it separately means the screen cannot contradict the decision the
+ * server just made.
  */
 
 export async function POST(request) {
@@ -117,6 +127,34 @@ export async function POST(request) {
     }
 
     const supabase = createAdminClient()
+
+    // The register closes with the poll. Placed before the device check and the
+    // insert, so a refused registration writes nothing and costs the device
+    // nothing, and placed after validation so the answer a voter gets is about
+    // their form until there is nothing left to correct.
+    //
+    // Fails closed, like every other election gate here: a settings row that
+    // cannot be read is not evidence that the register is open, and the
+    // alternative — admitting voters because the check itself broke — produces
+    // exactly the rows this gate exists to prevent.
+    //
+    // `readElection` is memoised per request, and the success path below calls
+    // it with this same client, so this costs no extra round trip.
+    const { election: gate, error: gateError } = await readElection(supabase)
+    if (gateError) {
+        return noStore(
+            dbError(gateError, 'Could not confirm the election status. Please try again.', 503)
+        )
+    }
+    if (gate?.status === ELECTION_STATUS.ENDED) {
+        return noStore(
+            jsonError(
+                'Registration has closed. The election has ended.',
+                403,
+                electionGateCode(gate.status)
+            )
+        )
+    }
 
     // No "is this phone already registered" pre-check.
     //
