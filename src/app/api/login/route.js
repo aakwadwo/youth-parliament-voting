@@ -3,8 +3,7 @@ import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase-admin'
 import { signVoterToken, setVoterCookie } from '@/lib/voter-session'
 import { isValidGhanaPhone, isValidDateString } from '@/lib/validation'
-import { rateLimit, RATE_LIMITS } from '@/lib/rate-limit'
-import { getClientIp, requireSameOrigin, noStore, rateLimitRefusal } from '@/lib/http'
+import { requireSameOrigin, noStore } from '@/lib/http'
 import { jsonError, ERROR_CODES } from '@/lib/api-error'
 import { requireVotingOpen } from '@/lib/election-server'
 
@@ -19,23 +18,42 @@ import { requireVotingOpen } from '@/lib/election-server'
 // a failed authentication, and only one of those is true here.
 const NOT_FOUND = 'We could not find a registration with those details. Please check and try again.'
 
+/**
+ * Voter sign-in is deliberately NOT rate limited.
+ *
+ * Removed on polling day, 15 August 2026, by instruction of the Commission. A
+ * registered voter may attempt sign-in as many times as they need.
+ *
+ * ── What this gives up ───────────────────────────────────────────────────────
+ *
+ * This route previously carried two caps: 2,000 attempts per IP per hour, and
+ * 8 per phone number per 24 hours. The per-phone cap was the control that
+ * mattered. Credentials here are a mobile number plus a date of birth, and a
+ * date of birth inside the 18-35 eligibility window is roughly 6,600
+ * possibilities — so with no cap, anyone who knows a registered voter's number
+ * can enumerate their date of birth and sign in as them. The per-IP cap was
+ * also the only thing bounding an unattended script hammering this endpoint,
+ * which is additionally the platform's one oracle for "is this number on the
+ * register".
+ *
+ * ── What still stands ────────────────────────────────────────────────────────
+ *
+ * Signing in is not voting. One person still gets one ballot: `voters.has_voted`
+ * is claimed inside the cast_vote() transaction, the per-voter cap on /api/vote
+ * is untouched, and a cast ballot retires its own session. The window gate still
+ * refuses every request outside polling hours. So the exposure created here is
+ * impersonation of a voter who has not yet voted — not double voting.
+ *
+ * Restoring this is a two-line change: reinstate the per-phone bucket here
+ * against `RATE_LIMITS.loginPhone`, which is still defined and still tuned.
+ */
 export async function POST(request) {
     const crossOrigin = requireSameOrigin(request)
     if (crossOrigin) return crossOrigin
 
-    const ip = getClientIp(request)
-    const ipLimit = await rateLimit('login-ip', ip, RATE_LIMITS.loginIp)
-    if (!ipLimit.allowed) {
-        return rateLimitRefusal(ipLimit, 'Too many attempts. Please try again later.')
-    }
-
     // Signing in exists only to reach the ballot, so it is gated on the poll
-    // being open. Two reasons beyond consistency with the rest of the flow:
-    // a voter session issued outside the voting window is a credential with
-    // nothing to authorise, and this endpoint is the platform's only oracle
-    // for "is this phone number registered" — leaving it answering around the
-    // clock widens the window for the enumeration the per-phone limit exists
-    // to slow down.
+    // being open: a voter session issued outside the voting window is a
+    // credential with nothing to authorise.
     const { response: refusal } = await requireVotingOpen()
     if (refusal) return refusal
 
@@ -58,18 +76,6 @@ export async function POST(request) {
 
     if (!isValidGhanaPhone(phone) || !isValidDateString(voter_dob)) {
         return noStore(jsonError(NOT_FOUND, 401, ERROR_CODES.INVALID_CREDENTIALS))
-    }
-
-    // The limit that actually matters. A date of birth inside the 18-35
-    // eligibility window is roughly 6,600 possibilities, so without a per-phone
-    // cap an attacker who knows someone's number could enumerate it. Eight
-    // attempts per number per day makes that take centuries.
-    const phoneLimit = await rateLimit('login-phone', phone, RATE_LIMITS.loginPhone)
-    if (!phoneLimit.allowed) {
-        return rateLimitRefusal(
-            phoneLimit,
-            'Too many sign-in attempts for this number. Please try again tomorrow.'
-        )
     }
 
     const supabase = createAdminClient()

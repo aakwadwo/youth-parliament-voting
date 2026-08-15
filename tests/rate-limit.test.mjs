@@ -1,5 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 
 import { rateLimit, parseWindowSeconds, RATE_LIMITS } from '@/lib/rate-limit'
 
@@ -46,11 +48,28 @@ test('every configured limit is parseable and positive', () => {
 })
 
 test('the brute-force limits that matter have not been loosened', () => {
-    // These are the two that stand between a known phone number and a
-    // low-entropy date of birth, and between an admin account and a password
-    // guess. A change here should have to be deliberate.
-    assert.deepEqual(RATE_LIMITS.loginPhone, { limit: 8, window: '24 h' })
+    // What stands between an admin account and a password guess. A change here
+    // should have to be deliberate.
     assert.deepEqual(RATE_LIMITS.adminLoginAccount, { limit: 6, window: '15 m' })
+
+    // `loginPhone` was the voter-side equivalent and is deliberately NOT
+    // asserted as enforced any more: it was removed from /api/login on polling
+    // day and voter sign-in is now unthrottled. The value below is retained
+    // only so reinstating it is one line — this pins the stored figure, not a
+    // protection that is running.
+    assert.deepEqual(RATE_LIMITS.loginPhone, { limit: 8, window: '24 h' })
+})
+
+test('voter sign-in applies no rate limit', () => {
+    // The removal, asserted against the route itself so that it is a decision
+    // rather than a drift, and so anyone reinstating a limit has to come here
+    // and say so. Admin sign-in is a separate route and stays limited.
+    const source = readFileSync(
+        path.join(process.cwd(), 'src', 'app', 'api', 'login', 'route.js'),
+        'utf8'
+    )
+    assert.ok(!/rateLimit\(/.test(source), 'voter sign-in must not be rate limited')
+    assert.ok(!/login-phone|login-ip/.test(source))
 })
 
 test('the per-IP sign-in limit has carrier-NAT headroom', () => {

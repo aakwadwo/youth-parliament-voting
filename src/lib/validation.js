@@ -30,9 +30,33 @@ export function isUUID(value) {
     return typeof value === 'string' && UUID_RE.test(value)
 }
 
-/** Accepts the spacing people actually type, e.g. "024 123 4567". */
+// Ghana's country code, however a voter writes it: "+233", "00233" or a bare
+// "233", followed by the nine-digit subscriber number.
+const INTERNATIONAL_PREFIX = /^(?:\+|00)?233(\d{9})$/
+
+/**
+ * Accepts the spacing people actually type, e.g. "024 123 4567", and the
+ * international form, e.g. "+233 24 123 4567".
+ *
+ * The international branch is not a new format being allowed onto the register:
+ * +233 24 123 4567 and 024 123 4567 are the same handset, and the register only
+ * ever stores the national form. Without it, a voter whose keyboard or contacts
+ * autofill supplies the international form — the way a number is saved on most
+ * phones — was refused at sign-in for a number that is genuinely registered.
+ *
+ * Collapsing both forms to one string also means the unique index on
+ * voter_phone sees them as the same number, so this cannot be used to register
+ * one handset twice.
+ */
 export function normalisePhone(value) {
-    return typeof value === 'string' ? value.replace(/[\s-]/g, '') : ''
+    if (typeof value !== 'string') return ''
+
+    // Brackets and dots as well as spaces and hyphens: "(024) 123-4567" and
+    // "024.123.4567" are both numbers people write down.
+    const compact = value.replace(/[\s\-().]/g, '')
+
+    const international = INTERNATIONAL_PREFIX.exec(compact)
+    return international ? `0${international[1]}` : compact
 }
 
 export function isValidGhanaPhone(value) {

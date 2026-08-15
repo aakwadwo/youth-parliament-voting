@@ -182,6 +182,17 @@ export const RATE_LIMITS = {
     // stays saturated through the whole peak, and a voter whose 30-minute
     // ballot session expires has to spend another slot to get back in.
     //
+    // ⚠️ NEITHER OF THE TWO SIGN-IN LIMITS BELOW IS CURRENTLY APPLIED.
+    //
+    // Both were removed from src/app/api/login/route.js on polling day,
+    // 15 August 2026, by instruction of the Commission, so that no registered
+    // voter could be locked out of signing in. Voter sign-in is unthrottled.
+    // The values are kept — tuned, and with their reasoning intact — so that
+    // reinstating either is one line in that route. See the comment block at
+    // the top of it for what the removal gives up.
+    //
+    // Everything else in this table is live and enforced.
+
     // 2000/hour is 0.55 requests per second from one address: no resource
     // concern, and still a wall for a script on a fixed address. This does NOT
     // loosen brute-force protection — `loginPhone` below is the control that

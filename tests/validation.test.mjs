@@ -26,7 +26,20 @@ test('isUUID accepts v4 UUIDs and rejects everything else', () => {
 })
 
 test('Ghana phone numbers accept real formats and reject the rest', () => {
-    for (const valid of ['0241234567', '024 123 4567', '024-123-4567', '0201234567', '0501234567']) {
+    for (const valid of [
+        '0241234567',
+        '024 123 4567',
+        '024-123-4567',
+        '0201234567',
+        '0501234567',
+        // The same handset in international form. Refusing these turned an
+        // autofilled contact into "no such registration" at sign-in.
+        '+233241234567',
+        '+233 24 123 4567',
+        '00233241234567',
+        '233241234567',
+        '(024) 123-4567',
+    ]) {
         assert.ok(isValidGhanaPhone(valid), `${valid} should be valid`)
     }
     for (const invalid of [
@@ -34,7 +47,8 @@ test('Ghana phone numbers accept real formats and reject the rest', () => {
         '02412345678', // too long
         '024123456', // too short
         '0141234567', // not a mobile prefix
-        '+233241234567', // international format not accepted
+        '+233141234567', // international form of a non-mobile prefix
+        '+2412341234567', // wrong country code
         'not-a-number',
         '',
         null,
@@ -46,7 +60,19 @@ test('Ghana phone numbers accept real formats and reject the rest', () => {
 test('normalisePhone strips the separators people type', () => {
     assert.equal(normalisePhone('024 123 4567'), '0241234567')
     assert.equal(normalisePhone('024-123-4567'), '0241234567')
+    assert.equal(normalisePhone('(024) 123.4567'), '0241234567')
     assert.equal(normalisePhone(null), '')
+})
+
+test('normalisePhone collapses the international form onto the national one', () => {
+    // All four are one handset, and the register stores exactly one of them,
+    // so the unique index on voter_phone sees them as the same number.
+    for (const written of ['0241234567', '+233241234567', '00233241234567', '233241234567']) {
+        assert.equal(normalisePhone(written), '0241234567', `${written} should normalise`)
+    }
+
+    // A national number that merely begins with 233 is left alone.
+    assert.equal(normalisePhone('0233123456'), '0233123456')
 })
 
 test('names accept West African forms and reject injection payloads', () => {

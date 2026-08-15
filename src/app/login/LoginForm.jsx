@@ -14,7 +14,7 @@ import { VotingNotOpen } from '@/components/VotingNotOpen'
 import { clearVoter } from '@/lib/voter-client'
 import { postJson } from '@/lib/api-client'
 import { ELECTION_GATE_CODES, ELECTION_STATUS } from '@/lib/election-status'
-import { isValidGhanaPhone, isValidDateString, normalisePhone, dobBounds } from '@/lib/validation'
+import { isValidGhanaPhone, isValidDateString, normalisePhone } from '@/lib/validation'
 
 /** The codes that mean "the poll is not open", whatever the wording. */
 const ELECTION_CLOSED_CODES = new Set(Object.values(ELECTION_GATE_CODES))
@@ -31,7 +31,6 @@ const ELECTION_CLOSED_CODES = new Set(Object.values(ELECTION_GATE_CODES))
  */
 export default function LoginForm() {
     const router = useRouter()
-    const bounds = dobBounds()
     const [form, setForm] = useState({ voter_phone: '', voter_dob: '' })
     const [errors, setErrors] = useState({})
     const [submitError, setSubmitError] = useState('')
@@ -177,11 +176,16 @@ export default function LoginForm() {
                                 name="voter_dob"
                                 autoComplete="bday"
                                 enterKeyHint="go"
-                                // Same eligibility bounds the registration form
-                                // applies, so the picker cannot offer a date
-                                // that could never have registered.
-                                min={bounds.min}
-                                max={bounds.max}
+                                // Deliberately unbounded, unlike the
+                                // registration form. Signing in matches an
+                                // existing registration; it does not re-run
+                                // eligibility. Applying `dobBounds()` here
+                                // locked out every voter who was 18-35 when
+                                // they registered and has had a birthday since:
+                                // the native picker would not offer their real
+                                // date of birth, so the lookup could only fail
+                                // and they were told no such registration
+                                // existed. Age is settled at registration.
                                 value={form.voter_dob}
                                 onChange={(e) => update('voter_dob', e.target.value)}
                             />
