@@ -3,6 +3,7 @@ import { PageShell, PageHeading } from '@/components/layout/PageShell'
 import { StatusPill, Badge } from '@/components/ui/badge'
 import { VoteBar, EmptyState } from '@/components/ui/feedback'
 import { ConstituencySearch } from '@/components/results/ConstituencySearch'
+import { CandidateName } from '@/components/results/CandidateName'
 import { PlatformCredit } from '@/components/brand/PlatformCredit'
 import { ElectionWindow } from '@/components/VotingNotOpen'
 import { createAdminClient } from '@/lib/supabase-admin'
@@ -144,11 +145,9 @@ function ConstituencyResult({ constituency }) {
                         {constituency.candidates.map((candidate) => (
                             <li
                                 key={candidate.key}
-                                className="flex items-baseline justify-between gap-3 px-4 py-3 sm:px-5"
+                                className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3 sm:px-5"
                             >
-                                <span className="min-w-0 truncate font-medium">
-                                    {candidate.name}
-                                </span>
+                                <CandidateName name={candidate.name} />
                                 <span className="numeric shrink-0 text-sm text-muted-foreground">
                                     0 votes
                                 </span>
@@ -160,7 +159,16 @@ function ConstituencyResult({ constituency }) {
                 <ul className="divide-y divide-border">
                     {constituency.candidates.map((candidate) => (
                         <li key={candidate.key} className="px-4 py-3.5 sm:px-5">
-                            <div className="flex items-baseline justify-between gap-3">
+                            {/* Stacked on a phone, one line from `sm` up.
+                                Sharing a line is right when there is room for
+                                it, but on a 320px screen the tally and the
+                                ELECTED label took their width first and left
+                                the name a stub — "Hon…." told a voter nothing
+                                about who had won. Giving the name the full
+                                width of the card is what actually fixes that;
+                                the expansion in CandidateName is the fallback
+                                for the few names still too long for it. */}
+                            <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
                                 <span className="flex min-w-0 items-center gap-2">
                                     {/* The original trophy, unchanged. It is
                                         decorative, and the label after the
@@ -172,11 +180,13 @@ function ConstituencyResult({ constituency }) {
                                             🏆
                                         </span>
                                     ) : null}
-                                    <span
-                                        className={`truncate ${candidate.isWinner ? 'font-semibold' : 'font-medium'}`}
-                                    >
-                                        {candidate.name}
-                                    </span>
+                                    {/* Expands to its full length when it does
+                                        not fit — which on a phone is most of
+                                        them. See CandidateName. */}
+                                    <CandidateName
+                                        name={candidate.name}
+                                        isWinner={candidate.isWinner}
+                                    />
                                     {/* Was a filled "Winner" pill, which drew
                                         the eye harder than the tally beside
                                         it. Plain small caps-weight text in the
