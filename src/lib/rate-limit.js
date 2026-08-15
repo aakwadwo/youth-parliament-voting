@@ -221,4 +221,19 @@ export const RATE_LIMITS = {
     // queue of correction requests will ever need, and slow enough that
     // enumerating a meaningful share of the number space would take years.
     adminVoterSearch: { limit: 60, window: '15 m' },
+
+    // Feedback on the platform, keyed by IP.
+    //
+    // The only unauthenticated write in the system that is not part of voting,
+    // so it is the obvious target for someone filling a table with rubbish.
+    // Nothing here can affect a ballot, a voter record or a tally, so the limit
+    // guards storage and reviewer attention rather than election integrity.
+    //
+    // 10 an hour rather than the carrier-NAT headroom `registerIp` needs:
+    // feedback is written once by people who have finished voting, not by a
+    // room of voters arriving at the same moment, and a school behind one
+    // address producing ten considered submissions in an hour is already
+    // generous. Someone genuinely refused here can still email the address on
+    // the contact page.
+    feedbackIp: { limit: 10, window: '1 h' },
 }

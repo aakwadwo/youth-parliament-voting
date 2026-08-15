@@ -5,7 +5,7 @@ import { ElectionStatusPanel } from '@/components/ElectionStatusBanner'
 import { MIN_AGE, MAX_AGE } from '@/lib/validation'
 import { ELECTION_NAME, CONTACT_EMAIL, CONTACT_PHONE_DISPLAY, CONTACT_PHONE_TEL } from '@/lib/election'
 import { readElection } from '@/lib/election-server'
-import { electionActions, electionResultsNotice } from '@/lib/election-status'
+import { electionActions, electionResultsNotice, areResultsPublic } from '@/lib/election-status'
 
 // Re-read at most every 15 seconds. The front page takes the traffic spike when
 // a poll opens, so it must stay cacheable, but a cached copy that outlives the
@@ -69,6 +69,17 @@ export default async function Home() {
     const actions = electionActions(election)
     const notice = electionResultsNotice(election)
 
+    // Once the count is out, the front door offers a second thing to do.
+    //
+    // Added here rather than inside `electionActions` on purpose: that function
+    // answers "what can a voter do about this election", and its answer is read
+    // by the results page and the status panel as well as by this one. Feedback
+    // on the software is not an election action, and pushing it in there would
+    // put a "Give feedback" button on surfaces that are asking a different
+    // question. The gate is the same one the results page itself uses, so the
+    // button cannot appear while /results is still showing "under review".
+    const resultsPublished = areResultsPublic(election)
+
     return (
         <div className="flex min-h-dvh flex-col bg-background">
             <TricolourRule />
@@ -112,6 +123,17 @@ export default async function Home() {
                                 {action.label}
                             </NavButton>
                         ))}
+
+                        {/* Secondary, and last. Viewing the result is what the
+                            page is for once the count is out; feedback is
+                            worth offering but must not compete with it, so it
+                            keeps the outlined treatment even though it is the
+                            newest thing on the page. */}
+                        {resultsPublished ? (
+                            <NavButton href="/feedback" variant="outline" size="xl">
+                                Give feedback
+                            </NavButton>
+                        ) : null}
                     </div>
 
                     <div className="mt-10 max-w-2xl space-y-8 border-t border-border pt-8 sm:mt-12 sm:pt-10">

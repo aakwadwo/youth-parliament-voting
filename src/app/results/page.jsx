@@ -2,6 +2,8 @@ import { NavButton } from '@/components/NavButton'
 import { PageShell, PageHeading } from '@/components/layout/PageShell'
 import { StatusPill, Badge } from '@/components/ui/badge'
 import { VoteBar, EmptyState } from '@/components/ui/feedback'
+import { ConstituencySearch } from '@/components/results/ConstituencySearch'
+import { PlatformCredit } from '@/components/brand/PlatformCredit'
 import { ElectionWindow } from '@/components/VotingNotOpen'
 import { createAdminClient } from '@/lib/supabase-admin'
 import { readElection } from '@/lib/election-server'
@@ -90,12 +92,24 @@ function ConstituencyResult({ constituency }) {
 
     return (
         <section
+            id={`seat-${constituency.key}`}
             aria-labelledby={`h-${constituency.key}`}
-            className="overflow-hidden rounded-xl border border-border bg-card"
+            // `data-found` is set by the constituency search when it scrolls
+            // this seat into view, and cleared a couple of seconds later. It is
+            // how a visitor confirms the page jumped to the seat they picked.
+            className="overflow-hidden scroll-mt-4 rounded-xl border border-border bg-card transition-shadow data-[found=true]:ring-2 data-[found=true]:ring-primary data-[found=true]:ring-offset-2 data-[found=true]:ring-offset-background"
         >
             <div className="flex flex-col gap-2 border-b border-border px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
                 <div className="min-w-0">
-                    <h3 id={`h-${constituency.key}`} className="font-semibold">
+                    {/* Focusable only programmatically: the search moves focus
+                        here after scrolling, so a keyboard or screen-reader
+                        user lands on the seat rather than being left at the
+                        search box while the page moves underneath them. */}
+                    <h3
+                        id={`h-${constituency.key}`}
+                        tabIndex={-1}
+                        className="font-semibold outline-none"
+                    >
                         {constituency.name}
                     </h3>
                     <p className="mt-0.5 text-sm text-muted-foreground">
@@ -103,13 +117,16 @@ function ConstituencyResult({ constituency }) {
                         {constituency.totalVotes === 1 ? 'vote' : 'votes'} counted
                     </p>
                 </div>
+                {/* The "Declared" pill is gone: it sat on 142 of 144 cards
+                    saying the same thing, which is the definition of noise on a
+                    results page. The two states that are *not* the norm still
+                    carry a pill, because those are the ones a reader needs
+                    pointing out. */}
                 {constituency.totalVotes === 0 ? (
                     <Badge variant="neutral">No votes cast</Badge>
                 ) : constituency.tied ? (
                     <Badge variant="warning">Tied</Badge>
-                ) : (
-                    <Badge variant="success">Declared</Badge>
-                )}
+                ) : null}
             </div>
 
             {constituency.candidates.length === 0 ? (
@@ -145,9 +162,10 @@ function ConstituencyResult({ constituency }) {
                         <li key={candidate.key} className="px-4 py-3.5 sm:px-5">
                             <div className="flex items-baseline justify-between gap-3">
                                 <span className="flex min-w-0 items-center gap-2">
-                                    {/* The trophy is decorative; "Winner" or
-                                        "Tied" is always present as text, so the
-                                        outcome never depends on an emoji
+                                    {/* The original trophy, unchanged. It is
+                                        decorative, and the label after the
+                                        name carries the outcome as text — so
+                                        the result never depends on an emoji
                                         rendering or on colour. */}
                                     {candidate.isWinner ? (
                                         <span aria-hidden="true" className="shrink-0">
@@ -159,10 +177,19 @@ function ConstituencyResult({ constituency }) {
                                     >
                                         {candidate.name}
                                     </span>
+                                    {/* Was a filled "Winner" pill, which drew
+                                        the eye harder than the tally beside
+                                        it. Plain small caps-weight text in the
+                                        brand colour states the same fact
+                                        without competing: still immediately
+                                        scannable down the page, no longer a
+                                        badge. "Tied" rather than "Elected"
+                                        where the seat is level, because a tied
+                                        candidate has not been elected. */}
                                     {candidate.isWinner ? (
-                                        <Badge variant="success">
-                                            {constituency.tied ? 'Tied' : 'Winner'}
-                                        </Badge>
+                                        <span className="shrink-0 text-xs font-semibold tracking-wide text-primary uppercase">
+                                            {constituency.tied ? 'Tied' : 'Elected'}
+                                        </span>
                                     ) : null}
                                     {!candidate.isActive ? (
                                         <Badge variant="neutral">Withdrawn</Badge>
@@ -226,6 +253,18 @@ export default async function ResultsPage() {
     const { summary } = results
     const nothingCounted = summary.totalVotes === 0
 
+    // Flattened once on the server so the search box ships a name, a region and
+    // an anchor key per seat — and no tallies. The client component that filters
+    // this never receives a vote count, which keeps the searchable index free of
+    // anything the page is not already displaying.
+    const searchIndex = results.regions.flatMap((region) =>
+        region.constituencies.map((constituency) => ({
+            key: constituency.key,
+            name: constituency.name,
+            region: region.region,
+        }))
+    )
+
     return (
         <PageShell width="lg">
             <PageHeading
@@ -250,6 +289,45 @@ export default async function ResultsPage() {
                     </div>
                 ))}
             </dl>
+
+            {/* How a seat is decided, stated once, above the results rather
+                than in the notes underneath them — a reader needs the rule
+                before the tallies, not after.
+
+                Plurality, and only plurality: the candidate with the most
+                votes is elected whether or not that is more than half. This
+                platform applies no majority threshold anywhere (see
+                `resolveWinners` in lib/results-math.js), and stating one here
+                would contradict a live declared result — Ketu South is won on
+                39.4% of the votes cast there. */}
+            <section
+                aria-labelledby="how-decided"
+                className="mt-6 rounded-xl border border-border bg-surface p-4 sm:p-5"
+            >
+                <h2 id="how-decided" className="text-sm font-semibold">
+                    How a seat is decided
+                </h2>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                    The candidate with the highest number of votes in a constituency is elected.
+                    There is no minimum share a candidate has to reach, so a seat contested by
+                    several candidates can be won without the winner taking half of the votes
+                    cast. Where two or more candidates finish level on the highest tally, the seat
+                    is shown as tied and the {ELECTORAL_COMMISSION} decides how it is resolved.
+                    Where no votes were cast at all, no candidate is elected and the seat is shown
+                    as undeclared.
+                </p>
+            </section>
+
+            {/* The regional grouping below is untouched; this is a shortcut
+                into it, not a replacement for it. */}
+            <div className="mt-6">
+                <ConstituencySearch constituencies={searchIndex} />
+                <p className="mt-2 text-xs text-muted-foreground">
+                    Or scroll to browse all{' '}
+                    <span className="numeric">{nf.format(summary.totalConstituencies)}</span>{' '}
+                    constituencies, grouped by region.
+                </p>
+            </div>
 
             {summary.tiedConstituencies > 0 ? (
                 <p className="mt-4 rounded-lg border border-warning-border bg-warning-surface p-3 text-sm leading-relaxed text-warning-foreground">
@@ -326,6 +404,10 @@ export default async function ResultsPage() {
                         : `Released by the ${ELECTORAL_COMMISSION}.`}
                 </p>
             </div>
+
+            {/* Below the result and below the notes on how it was counted.
+                Nothing about the supplier appears above a tally. */}
+            <PlatformCredit className="mt-8" />
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <NavButton href="/election" variant="outline" size="lg" className="sm:w-auto">
