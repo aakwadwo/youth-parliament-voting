@@ -73,3 +73,39 @@ test('the sign-in form survives as its own client component', () => {
     assert.match(form, /^\s*['"]use client['"]/)
     assert.match(form, /ELECTION_CLOSED_CODES/, 'the mid-session close race is no longer handled')
 })
+
+test('the sign-in date of birth is entered as three labelled parts', () => {
+    // A single `type="date"` control renders in the browser's locale, so the
+    // same field is DD/MM/YYYY on one phone and MM/DD/YYYY on another and the
+    // site gets no say. That silently submitted the wrong date — 31 March
+    // became 3 December — and the voter was told their registration did not
+    // exist. Asserted here so the ambiguous control cannot come back.
+    const form = read('src/app/login/LoginForm.jsx')
+
+    assert.ok(!/type="date"/.test(form), 'the sign-in form uses a locale-dependent date input')
+    assert.match(form, /composeDateString/, 'the date is not assembled from its parts')
+    for (const part of ['dob_day', 'dob_month', 'dob_year']) {
+        assert.match(form, new RegExp(part), `the ${part} part is missing`)
+    }
+    // The month must be chosen by name; a number box would reintroduce the
+    // very ambiguity this replaced.
+    assert.match(form, /'March'/, 'months are not offered by name')
+})
+
+test('the registration date of birth is entered as three labelled parts', () => {
+    // Same defect, worse consequence. A locale-swapped date on the sign-in form
+    // costs one failed attempt; here it is written into the register and the
+    // voter is refused at sign-in ever after for typing their real date.
+    const form = read('src/app/register/RegisterForm.jsx')
+
+    assert.ok(!/type="date"/.test(form), 'the registration form uses a locale-dependent date input')
+    assert.match(form, /composeDateString/, 'the date is not assembled from its parts')
+    for (const part of ['dob_day', 'dob_month', 'dob_year']) {
+        assert.match(form, new RegExp(part), `the ${part} part is missing`)
+    }
+    assert.match(form, /'March'/, 'months are not offered by name')
+
+    // The eligibility rule must survive the change untouched — it is the only
+    // thing keeping an ineligible date out of the register.
+    assert.match(form, /checkAgeEligibility/, 'age eligibility is no longer checked on the form')
+})

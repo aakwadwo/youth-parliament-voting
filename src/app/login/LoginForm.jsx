@@ -8,13 +8,25 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Field } from '@/components/ui/field'
+import { Label } from '@/components/ui/label'
 import { Alert, LiveRegion } from '@/components/ui/alert'
 import { PageShell, PageHeading } from '@/components/layout/PageShell'
 import { VotingNotOpen } from '@/components/VotingNotOpen'
 import { clearVoter } from '@/lib/voter-client'
 import { postJson } from '@/lib/api-client'
 import { ELECTION_GATE_CODES, ELECTION_STATUS } from '@/lib/election-status'
-import { isValidGhanaPhone, isValidDateString, normalisePhone } from '@/lib/validation'
+import { isValidGhanaPhone, normalisePhone, composeDateString } from '@/lib/validation'
+
+/**
+ * Month names, not numbers.
+ *
+ * The whole failure this control replaces is two digits whose meaning depends
+ * on a device setting the voter has never seen. "March" cannot be read as a day.
+ */
+const MONTHS = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+]
 
 /** The codes that mean "the poll is not open", whatever the wording. */
 const ELECTION_CLOSED_CODES = new Set(Object.values(ELECTION_GATE_CODES))
@@ -31,7 +43,12 @@ const ELECTION_CLOSED_CODES = new Set(Object.values(ELECTION_GATE_CODES))
  */
 export default function LoginForm() {
     const router = useRouter()
-    const [form, setForm] = useState({ voter_phone: '', voter_dob: '' })
+    const [form, setForm] = useState({
+        voter_phone: '',
+        dob_day: '',
+        dob_month: '',
+        dob_year: '',
+    })
     const [errors, setErrors] = useState({})
     const [submitError, setSubmitError] = useState('')
     const [loading, setLoading] = useState(false)
@@ -46,6 +63,10 @@ export default function LoginForm() {
     function update(key, value) {
         setForm((prev) => ({ ...prev, [key]: value }))
         if (errors[key]) setErrors((prev) => ({ ...prev, [key]: null }))
+        // The three date parts share one error, so editing any of them clears it.
+        if (key.startsWith('dob_') && errors.voter_dob) {
+            setErrors((prev) => ({ ...prev, voter_dob: null }))
+        }
     }
 
     async function handleSubmit(event) {
@@ -55,12 +76,17 @@ export default function LoginForm() {
         // re-renders as disabled.
         if (inFlight.current) return
 
+        // Built from three labelled parts rather than read from one control
+        // whose digit order depends on the device's locale. '' means the parts
+        // do not describe a real date.
+        const voterDob = composeDateString(form.dob_year, form.dob_month, form.dob_day)
+
         const nextErrors = {}
         if (!isValidGhanaPhone(form.voter_phone)) {
             nextErrors.voter_phone = 'Enter the mobile number you registered with.'
         }
-        if (!isValidDateString(form.voter_dob)) {
-            nextErrors.voter_dob = 'Enter your date of birth.'
+        if (!voterDob) {
+            nextErrors.voter_dob = 'Enter the day, month and year you were born.'
         }
 
         setErrors(nextErrors)
@@ -76,7 +102,7 @@ export default function LoginForm() {
 
         const result = await postJson('/api/login', {
             voter_phone: normalisePhone(form.voter_phone),
-            voter_dob: form.voter_dob,
+            voter_dob: voterDob,
         })
 
         inFlight.current = false
@@ -164,32 +190,110 @@ export default function LoginForm() {
                             />
                         </Field>
 
-                        <Field
-                            id="voter_dob"
-                            label="Date of birth"
-                            hint="Day / month / year — for example 14/03/2004."
-                            required
-                            error={errors.voter_dob}
+                        {/*
+                            Three labelled parts, not one native date control.
+
+                            A native date input renders in the BROWSER's locale,
+                            which the site does not choose and cannot read. The
+                            same control is DD/MM/YYYY on a phone set to en-GB
+                            and MM/DD/YYYY on one set to en-US, so a voter born
+                            on 31 March who types 31 then 03 into a month-first
+                            device has the 31 clamped to 12 by the segmented
+                            editor and submits 3 December — silently, with no
+                            error, and is then told their registration does not
+                            exist.
+
+                            Day, month and year are asked for separately so
+                            there is no order to misread, and the month is
+                            chosen by NAME so it cannot be confused with a day
+                            at all. Eligibility is not re-checked here: age is
+                            settled at registration.
+                        */}
+                        <fieldset
+                            aria-describedby="voter_dob-hint"
+                            aria-invalid={errors.voter_dob ? true : undefined}
                         >
-                            <Input
-                                type="date"
-                                name="voter_dob"
-                                autoComplete="bday"
-                                enterKeyHint="go"
-                                // Deliberately unbounded, unlike the
-                                // registration form. Signing in matches an
-                                // existing registration; it does not re-run
-                                // eligibility. Applying `dobBounds()` here
-                                // locked out every voter who was 18-35 when
-                                // they registered and has had a birthday since:
-                                // the native picker would not offer their real
-                                // date of birth, so the lookup could only fail
-                                // and they were told no such registration
-                                // existed. Age is settled at registration.
-                                value={form.voter_dob}
-                                onChange={(e) => update('voter_dob', e.target.value)}
-                            />
-                        </Field>
+                            <legend className="text-sm font-medium text-foreground">
+                                Date of birth <span className="text-destructive" aria-hidden="true">*</span>
+                            </legend>
+                            <p
+                                id="voter_dob-hint"
+                                className="mt-2 text-xs leading-relaxed text-muted-foreground"
+                            >
+                                The date you registered with. Choose the month by name.
+                            </p>
+
+                            <div className="mt-2 grid grid-cols-[5rem_1fr_6rem] gap-2">
+                                <div>
+                                    <Label htmlFor="voter_dob" className="text-xs font-normal text-muted-foreground">
+                                        Day
+                                    </Label>
+                                    <Input
+                                        // Carries the `voter_dob` id so the
+                                        // shared focus-the-first-error logic
+                                        // lands on the start of this group.
+                                        id="voter_dob"
+                                        name="dob_day"
+                                        inputMode="numeric"
+                                        autoComplete="bday-day"
+                                        maxLength={2}
+                                        placeholder="31"
+                                        className="mt-1"
+                                        value={form.dob_day}
+                                        onChange={(e) =>
+                                            update('dob_day', e.target.value.replace(/\D/g, ''))
+                                        }
+                                    />
+                                </div>
+
+                                <div>
+                                    <Label htmlFor="dob_month" className="text-xs font-normal text-muted-foreground">
+                                        Month
+                                    </Label>
+                                    <select
+                                        id="dob_month"
+                                        name="dob_month"
+                                        autoComplete="bday-month"
+                                        className="mt-1 h-10 w-full min-w-0 rounded-lg border border-input bg-background px-3 py-2 text-base text-foreground outline-none transition-[color,border-color,box-shadow] focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background md:text-sm"
+                                        value={form.dob_month}
+                                        onChange={(e) => update('dob_month', e.target.value)}
+                                    >
+                                        <option value="">Select</option>
+                                        {MONTHS.map((name, i) => (
+                                            <option key={name} value={String(i + 1)}>
+                                                {name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <Label htmlFor="dob_year" className="text-xs font-normal text-muted-foreground">
+                                        Year
+                                    </Label>
+                                    <Input
+                                        id="dob_year"
+                                        name="dob_year"
+                                        inputMode="numeric"
+                                        autoComplete="bday-year"
+                                        enterKeyHint="go"
+                                        maxLength={4}
+                                        placeholder="2000"
+                                        className="mt-1"
+                                        value={form.dob_year}
+                                        onChange={(e) =>
+                                            update('dob_year', e.target.value.replace(/\D/g, ''))
+                                        }
+                                    />
+                                </div>
+                            </div>
+
+                            {errors.voter_dob ? (
+                                <p className="mt-2 text-sm font-medium text-destructive">
+                                    {errors.voter_dob}
+                                </p>
+                            ) : null}
+                        </fieldset>
 
                         {submitError ? (
                             <Alert variant="danger" title="Could not sign you in">

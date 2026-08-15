@@ -80,6 +80,36 @@ export function isValidDateString(value) {
     return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d
 }
 
+/**
+ * Builds `YYYY-MM-DD` from three separately-entered parts.
+ *
+ * Exists because `<input type="date">` renders in the *browser's* locale, not
+ * the site's. A phone set to en-US shows the same control as MM/DD/YYYY that a
+ * phone set to en-GB shows as DD/MM/YYYY, and the app is given no say in it and
+ * no way to detect it. A voter entering 31/03/2000 into a month-first control
+ * does not get an error — the segmented editor clamps 31 into the month box to
+ * 12 — so the field silently yields 2000-12-03 and the voter is told, with
+ * complete confidence, that their registration does not exist.
+ *
+ * Taking day, month and year separately removes the ambiguity at the source:
+ * each part is labelled, so there is no order to misread.
+ *
+ * Returns '' rather than a partial or rolled-over date. Never hands back a date
+ * the parts do not literally describe: `isValidDateString` rejects 31 February
+ * instead of letting it become 3 March, which on this form would mean signing a
+ * voter in against a date they did not type.
+ */
+export function composeDateString(year, month, day) {
+    const y = String(year ?? '').trim()
+    const m = String(month ?? '').trim()
+    const d = String(day ?? '').trim()
+
+    if (!/^\d{4}$/.test(y) || !/^\d{1,2}$/.test(m) || !/^\d{1,2}$/.test(d)) return ''
+
+    const iso = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`
+    return isValidDateString(iso) ? iso : ''
+}
+
 /** Exact calendar age, not a 365.25-day approximation. */
 export function calculateAge(dobString, now = new Date()) {
     const [y, m, d] = dobString.split('-').map(Number)

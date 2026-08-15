@@ -8,6 +8,7 @@ import {
     isValidName,
     normaliseName,
     isValidDateString,
+    composeDateString,
     calculateAge,
     checkAgeEligibility,
     dobBounds,
@@ -73,6 +74,46 @@ test('normalisePhone collapses the international form onto the national one', ()
 
     // A national number that merely begins with 233 is left alone.
     assert.equal(normalisePhone('0233123456'), '0233123456')
+})
+
+test('composeDateString builds an ISO date from three separate parts', () => {
+    assert.equal(composeDateString('2000', '3', '31'), '2000-03-31')
+    assert.equal(composeDateString('2000', '03', '31'), '2000-03-31')
+    assert.equal(composeDateString('2004', '12', '1'), '2004-12-01')
+    // Whitespace from a paste or an autofill.
+    assert.equal(composeDateString(' 2004 ', ' 7 ', ' 9 '), '2004-07-09')
+    // Numbers, not just strings.
+    assert.equal(composeDateString(2004, 7, 9), '2004-07-09')
+})
+
+test('composeDateString refuses anything that is not a real, complete date', () => {
+    // Incomplete: the voter is still filling the group in.
+    assert.equal(composeDateString('', '3', '31'), '')
+    assert.equal(composeDateString('2000', '', '31'), '')
+    assert.equal(composeDateString('2000', '3', ''), '')
+    assert.equal(composeDateString(null, undefined, ''), '')
+
+    // Out of range. 31 in the MONTH box is the exact input that a month-first
+    // native picker silently clamped to 12 — here it produces nothing at all
+    // rather than a date the voter did not type.
+    assert.equal(composeDateString('2000', '31', '3'), '')
+    assert.equal(composeDateString('2000', '13', '1'), '')
+    assert.equal(composeDateString('2000', '0', '1'), '')
+    assert.equal(composeDateString('2000', '1', '32'), '')
+
+    // Never rolls over: 31 February must not become 3 March.
+    assert.equal(composeDateString('2001', '2', '31'), '')
+    // And a real leap day still passes.
+    assert.equal(composeDateString('2000', '2', '29'), '2000-02-29')
+    assert.equal(composeDateString('2001', '2', '29'), '')
+
+    // A two-digit year is not silently expanded into a century.
+    assert.equal(composeDateString('00', '3', '31'), '')
+})
+
+test('composeDateString round-trips through the validator the API uses', () => {
+    const iso = composeDateString('2000', '3', '31')
+    assert.ok(isValidDateString(iso), 'the composed date must satisfy the server-side check')
 })
 
 test('names accept West African forms and reject injection payloads', () => {

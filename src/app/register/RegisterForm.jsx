@@ -6,6 +6,7 @@ import Link from 'next/link'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import { Field } from '@/components/ui/field'
 import { Alert, LiveRegion } from '@/components/ui/alert'
@@ -25,6 +26,7 @@ import {
     isValidGhanaPhone,
     checkAgeEligibility,
     normalisePhone,
+    composeDateString,
     MIN_AGE,
     MAX_AGE,
 } from '@/lib/validation'
@@ -40,7 +42,13 @@ const VALIDATORS = {
             : !isValidName(v)
               ? 'Use letters, spaces, hyphens and apostrophes only.'
               : null,
-    voter_dob: (v) => (!v ? 'Enter your date of birth.' : (checkAgeEligibility(v).message ?? null)),
+    // Receives the composed ISO date, never a raw field value. '' means the
+    // three parts do not describe a real date. The eligibility rule itself is
+    // untouched: `checkAgeEligibility` is the same function the server runs.
+    voter_dob: (v) =>
+        !v
+            ? 'Enter the day, month and year you were born.'
+            : (checkAgeEligibility(v).message ?? null),
     voter_phone: (v) =>
         !v.trim()
             ? 'Enter your phone number.'
@@ -51,6 +59,20 @@ const VALIDATORS = {
 }
 
 const FIELD_ORDER = ['full_name', 'voter_dob', 'voter_phone', 'constituency_id']
+
+/**
+ * Month names, not numbers.
+ *
+ * Two digits in a date mean different things on different devices; "March"
+ * means one thing everywhere.
+ */
+const MONTHS = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+]
+
+/** The three parts as the one ISO date every rule and the API expect. */
+const dobOf = (f) => composeDateString(f.dob_year, f.dob_month, f.dob_day)
 
 /**
  * The registration form.
@@ -76,7 +98,11 @@ export default function RegisterForm({ constituencies = [], constituenciesError 
 
     const [form, setForm] = useState({
         full_name: '',
-        voter_dob: '',
+        // Held as three parts, composed into `voter_dob` only at the point it is
+        // validated or sent. See the field itself for why.
+        dob_day: '',
+        dob_month: '',
+        dob_year: '',
         voter_phone: '',
         constituency_id: '',
         constituency_name: '',
@@ -95,6 +121,17 @@ export default function RegisterForm({ constituencies = [], constituenciesError 
 
     function update(key, value) {
         setForm((prev) => ({ ...prev, [key]: value }))
+
+        // The three date parts are one field as far as validation is concerned,
+        // so any of them clears and re-checks the group's single error.
+        if (key.startsWith('dob_')) {
+            if (errors.voter_dob) {
+                const next = { ...form, [key]: value }
+                setErrors((prev) => ({ ...prev, voter_dob: VALIDATORS.voter_dob(dobOf(next)) }))
+            }
+            return
+        }
+
         // Clear an error as soon as the voter fixes it, rather than making them
         // submit again to find out.
         if (errors[key]) {
@@ -104,6 +141,18 @@ export default function RegisterForm({ constituencies = [], constituenciesError 
 
     function handleBlur(key) {
         setTouched((prev) => ({ ...prev, [key]: true }))
+
+        if (key.startsWith('dob_')) {
+            // Stays quiet until all three parts are present: objecting to an
+            // incomplete date while the voter is still tabbing through it would
+            // flag every registration part-way to being correct.
+            if (form.dob_day && form.dob_month && form.dob_year) {
+                setTouched((prev) => ({ ...prev, voter_dob: true }))
+                setErrors((prev) => ({ ...prev, voter_dob: VALIDATORS.voter_dob(dobOf(form)) }))
+            }
+            return
+        }
+
         setErrors((prev) => ({ ...prev, [key]: (VALIDATORS[key]?.(form[key]) ?? null) }))
     }
 
@@ -115,9 +164,14 @@ export default function RegisterForm({ constituencies = [], constituenciesError 
         // handler twice and race two registrations for the same phone number.
         if (inFlight.current) return
 
+        // `voter_dob` is not a field on the form any more, it is the composition
+        // of three. Everything downstream — the validators, the focus order, the
+        // request body — still sees one ISO date under that name.
+        const values = { ...form, voter_dob: dobOf(form) }
+
         const nextErrors = {}
         for (const key of FIELD_ORDER) {
-            const message = VALIDATORS[key](form[key])
+            const message = VALIDATORS[key](values[key])
             if (message) nextErrors[key] = message
         }
 
@@ -138,7 +192,9 @@ export default function RegisterForm({ constituencies = [], constituenciesError 
 
         const result = await postJson('/api/register', {
             full_name: form.full_name,
-            voter_dob: form.voter_dob,
+            // Always YYYY-MM-DD: `composeDateString` returns that shape or ''
+            // and '' cannot reach here, because the validator above rejects it.
+            voter_dob: values.voter_dob,
             voter_phone: normalisePhone(form.voter_phone),
             constituency_id: form.constituency_id,
         })
@@ -220,40 +276,138 @@ export default function RegisterForm({ constituencies = [], constituenciesError 
                             />
                         </Field>
 
-                        <Field
-                            id="voter_dob"
-                            label="Date of birth"
-                            // The native control shows its own format hint, but
-                            // only once it has focus on some phones, so the
-                            // order is stated in the open. Ghana writes dates
-                            // day-first.
-                            hint="Day / month / year — for example 14/03/2004."
-                            required
-                            error={touched.voter_dob ? errors.voter_dob : null}
+                        {/*
+                            Three labelled parts, not one native date control —
+                            the same change made to the sign-in form, and it
+                            matters more here.
+
+                            A native date input renders in the BROWSER's locale,
+                            which this site does not choose and cannot read. The
+                            identical control is DD/MM/YYYY on a phone set to
+                            en-GB and MM/DD/YYYY on one set to en-US. A voter
+                            born on 31 March entering 31 then 03 on a
+                            month-first device has the 31 clamped to 12 by the
+                            segmented editor and registers as 3 December — with
+                            no error shown. On the sign-in form that costs one
+                            failed attempt; here it is written into the register
+                            permanently, and the voter is then refused at
+                            sign-in for typing their real date of birth.
+
+                            Asking for day, month and year separately removes
+                            the order entirely, and naming the months removes
+                            the last way two digits can be misread.
+
+                            Eligibility is unchanged and still enforced twice:
+                            by VALIDATORS.voter_dob here and by
+                            checkAgeEligibility() on the server, both of which
+                            reject an ineligible date with a message naming the
+                            rule. The bounds that used to sit on this control
+                            stay off it — several native pickers OPEN ON a bound
+                            and return it if the voter confirms without
+                            scrolling, which is how 545 registrations came to
+                            hold exactly "eighteen years to the day" before the
+                            day they were made.
+                        */}
+                        <fieldset
+                            aria-describedby="voter_dob-hint"
+                            aria-invalid={touched.voter_dob && errors.voter_dob ? true : undefined}
                         >
-                            <Input
-                                type="date"
-                                name="voter_dob"
-                                autoComplete="bday"
-                                // Deliberately unbounded. `min`/`max` here did
-                                // not merely bound the picker — several native
-                                // date controls OPEN ON the bound and return it
-                                // if the voter confirms without scrolling, so
-                                // the form silently recorded a date of birth
-                                // nobody had chosen. 545 registrations landed on
-                                // exactly "eighteen years to the day" before the
-                                // day they were made, and those voters were then
-                                // refused at sign-in for typing their real date
-                                // of birth. Eligibility is unaffected: it is
-                                // enforced by VALIDATORS.voter_dob here and by
-                                // checkAgeEligibility() on the server, both of
-                                // which reject an ineligible date with a
-                                // message naming the rule.
-                                value={form.voter_dob}
-                                onChange={(e) => update('voter_dob', e.target.value)}
-                                onBlur={() => handleBlur('voter_dob')}
-                            />
-                        </Field>
+                            <legend className="text-sm font-medium text-foreground">
+                                Date of birth{' '}
+                                <span className="text-destructive" aria-hidden="true">
+                                    *
+                                </span>
+                            </legend>
+                            <p
+                                id="voter_dob-hint"
+                                className="mt-2 text-xs leading-relaxed text-muted-foreground"
+                            >
+                                Choose the month by name. You will need this exact date to sign in
+                                and vote.
+                            </p>
+
+                            <div className="mt-2 grid grid-cols-[5rem_1fr_6rem] gap-2">
+                                <div>
+                                    <Label
+                                        htmlFor="voter_dob"
+                                        className="text-xs font-normal text-muted-foreground"
+                                    >
+                                        Day
+                                    </Label>
+                                    <Input
+                                        // Carries the `voter_dob` id so the
+                                        // existing focus-the-first-error logic
+                                        // lands on the start of this group.
+                                        id="voter_dob"
+                                        name="dob_day"
+                                        inputMode="numeric"
+                                        autoComplete="bday-day"
+                                        maxLength={2}
+                                        placeholder="14"
+                                        className="mt-1"
+                                        value={form.dob_day}
+                                        onChange={(e) =>
+                                            update('dob_day', e.target.value.replace(/\D/g, ''))
+                                        }
+                                        onBlur={() => handleBlur('dob_day')}
+                                    />
+                                </div>
+
+                                <div>
+                                    <Label
+                                        htmlFor="dob_month"
+                                        className="text-xs font-normal text-muted-foreground"
+                                    >
+                                        Month
+                                    </Label>
+                                    <select
+                                        id="dob_month"
+                                        name="dob_month"
+                                        autoComplete="bday-month"
+                                        className="mt-1 h-10 w-full min-w-0 rounded-lg border border-input bg-background px-3 py-2 text-base text-foreground outline-none transition-[color,border-color,box-shadow] focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background md:text-sm"
+                                        value={form.dob_month}
+                                        onChange={(e) => update('dob_month', e.target.value)}
+                                        onBlur={() => handleBlur('dob_month')}
+                                    >
+                                        <option value="">Select</option>
+                                        {MONTHS.map((name, i) => (
+                                            <option key={name} value={String(i + 1)}>
+                                                {name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <Label
+                                        htmlFor="dob_year"
+                                        className="text-xs font-normal text-muted-foreground"
+                                    >
+                                        Year
+                                    </Label>
+                                    <Input
+                                        id="dob_year"
+                                        name="dob_year"
+                                        inputMode="numeric"
+                                        autoComplete="bday-year"
+                                        maxLength={4}
+                                        placeholder="2004"
+                                        className="mt-1"
+                                        value={form.dob_year}
+                                        onChange={(e) =>
+                                            update('dob_year', e.target.value.replace(/\D/g, ''))
+                                        }
+                                        onBlur={() => handleBlur('dob_year')}
+                                    />
+                                </div>
+                            </div>
+
+                            {touched.voter_dob && errors.voter_dob ? (
+                                <p className="mt-2 text-sm font-medium text-destructive">
+                                    {errors.voter_dob}
+                                </p>
+                            ) : null}
+                        </fieldset>
 
                         <Field
                             id="voter_phone"
