@@ -93,20 +93,30 @@ test('a decisive result names exactly one winner', async () => {
     )
 })
 
-test('a tie is reported as a tie rather than resolved to one name', async () => {
+test('a tie below the minimum goes to a re-election, and the tallies survive', async () => {
     const results = await build()
     const deadHeat = find(results, 'Dead Heat')
 
-    assert.equal(deadHeat.tied, true)
-    assert.deepEqual(deadHeat.winners.slice().sort(), ['Tied A', 'Tied B'])
-    assert.equal(deadHeat.candidates.filter((c) => c.isWinner).length, 2)
+    // Tied A and Tied B are level on 20, which is under the 50-vote minimum, so
+    // neither takes the seat. `resolveWinners` still found them — what changed
+    // is the eligibility layer on top of it.
+    assert.equal(deadHeat.reElection, true)
+    assert.equal(deadHeat.reason, 'Re-election required — winner received fewer than 50 votes')
+    assert.deepEqual(deadHeat.winners, [])
+    assert.equal(deadHeat.tied, false, 'a seat with no elected member is not a declared tie')
+    assert.equal(deadHeat.candidates.filter((c) => c.isWinner).length, 0)
 
-    // The candidate who polled nothing is present, is not a winner, and is on
-    // a nil share rather than being dropped from the ballot paper.
-    const zero = deadHeat.candidates.find((c) => c.name === 'No Votes At All')
-    assert.equal(zero.votes, 0)
-    assert.equal(zero.sharePct, 0)
-    assert.equal(zero.isWinner, false)
+    // The historical count is untouched: every candidate, every tally, every
+    // share exactly as counted.
+    assert.deepEqual(
+        deadHeat.candidates.map((c) => [c.name, c.votes, c.sharePct]),
+        [
+            ['Tied A', 20, 50],
+            ['Tied B', 20, 50],
+            ['No Votes At All', 0, 0],
+        ]
+    )
+    assert.equal(deadHeat.totalVotes, 40)
 })
 
 test('a constituency where nobody voted has no winner at all', async () => {
@@ -139,18 +149,26 @@ test('resolveWinners treats an all-zero field as undeclared, not a universal tie
 test('constituencies are grouped by region, both sorted alphabetically', async () => {
     const results = await build()
 
+    // Ahafo appears because "Nobody Standing" now reaches the public result.
+    // Before the re-election rule it was invisible: get_results() inner-joins
+    // candidates, so a seat nobody contested produced no rows at all.
     assert.deepEqual(
         results.regions.map((r) => r.region),
-        ['Ashanti', 'Greater Accra']
+        ['Ahafo', 'Ashanti', 'Greater Accra']
     )
     assert.deepEqual(
         results.regions[0].constituencies.map((c) => c.name),
+        ['Nobody Standing']
+    )
+    assert.deepEqual(
+        results.regions[1].constituencies.map((c) => c.name),
         ['Dead Heat', 'No Ballots']
     )
 
     // Region totals are the sum of their constituencies.
-    assert.equal(results.regions[0].totalVotes, 40)
-    assert.equal(results.regions[1].totalVotes, 100)
+    assert.equal(results.regions[0].totalVotes, 0)
+    assert.equal(results.regions[1].totalVotes, 40)
+    assert.equal(results.regions[2].totalVotes, 100)
 })
 
 test('candidate order within a constituency is the declaration order', async () => {
@@ -173,12 +191,26 @@ test('the summary counts seats, declarations and ties', async () => {
 
     assert.deepEqual(results.summary, {
         totalVotes: 140,
-        totalConstituencies: 3,
-        // "No Ballots" has no winner, so it is not declared.
-        declaredConstituencies: 2,
-        tiedConstituencies: 1,
-        totalRegions: 2,
+        // All four constituencies, including the one nobody stood in.
+        totalConstituencies: 4,
+        // Only "Clear Win" (70 votes) clears the 50-vote minimum. "Dead Heat"
+        // is tied on 20, "No Ballots" has no winner, "Nobody Standing" had no
+        // candidate — all three go to a re-election.
+        declaredConstituencies: 1,
+        reElectionConstituencies: 3,
+        // The tie is below the minimum, so it produces no elected member and
+        // is not counted as a declared tie.
+        tiedConstituencies: 0,
+        totalRegions: 3,
+        minVotesToBeElected: 50,
     })
+
+    // The invariant that must hold for any election: every constituency is
+    // either elected or going to a re-election, and nothing is both or neither.
+    assert.equal(
+        results.summary.declaredConstituencies + results.summary.reElectionConstituencies,
+        results.summary.totalConstituencies
+    )
 })
 
 // --------------------------------------------------------------------------

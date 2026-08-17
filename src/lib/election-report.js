@@ -11,7 +11,14 @@
  */
 
 import { ELECTION_NAME } from '@/lib/election'
-import { resolveWinners, percent } from '@/lib/results-math'
+import {
+    resolveWinners,
+    percent,
+    classifySeat,
+    isElectedSeat,
+    SEAT_STATUS,
+    MIN_VOTES_TO_BE_ELECTED,
+} from '@/lib/results-math'
 
 /**
  * Fetches and shapes the complete report.
@@ -75,6 +82,24 @@ export async function buildElectionReport(supabase, { generatedBy = null } = {})
         (turnoutRes.data ?? []).map((t) => [t.constituency_id, t])
     )
 
+    // `get_results()` inner-joins candidates, so a constituency where nobody
+    // stood is absent from it. `get_constituency_turnout()` is built the other
+    // way round — `from constituencies LEFT JOIN` — so it already carries all
+    // 276, and this report already fetches it. Driving the loop from that list
+    // therefore adds the missing seats without a fourth query and without
+    // touching `get_results()`, whose row shape the public builder and all
+    // three export formats also depend on.
+    for (const t of turnoutRes.data ?? []) {
+        if (byConstituency.has(t.constituency_id)) continue
+        byConstituency.set(t.constituency_id, {
+            id: t.constituency_id,
+            name: t.constituency_name,
+            region: t.region ?? null,
+            totalVotes: 0,
+            candidates: [],
+        })
+    }
+
     const constituencies = Array.from(byConstituency.values()).map((c) => {
         const t = turnoutByConstituency.get(c.id)
         const registered = num(t?.registered)
@@ -86,11 +111,29 @@ export async function buildElectionReport(supabase, { generatedBy = null } = {})
             sharePct: percent(cand.votes, c.totalVotes),
         }))
 
+        const winners = resolveWinners(candidates)
+
+        // The same call the public builder makes, on the same shape. This is
+        // the only reason the on-screen result and the exported one cannot
+        // disagree about who holds a seat.
+        const seat = classifySeat({ candidateCount: candidates.length, winners })
+        const elected = isElectedSeat(seat)
+
         return {
             ...c,
             code: t?.code ?? null,
             candidates,
-            winners: resolveWinners(candidates),
+            // Emptied for a re-election seat so every downstream consumer —
+            // the admin table, the PDF, the workbook, the CSV — stops marking a
+            // winner without each having to know the rule. The tallies in
+            // `candidates` above are untouched.
+            winners: elected ? winners : [],
+            status: seat.status,
+            reElection: seat.status === SEAT_STATUS.RE_ELECTION,
+            reason: seat.reason,
+            // Preserved separately so an auditor can still see who led a seat
+            // that is going to a re-election, and on what tally.
+            leadingCandidates: winners.map((w) => ({ name: w.name, votes: w.votes })),
             registered,
             verified,
             turnoutPct: percent(c.totalVotes, denominator),
@@ -106,7 +149,12 @@ export async function buildElectionReport(supabase, { generatedBy = null } = {})
         turnoutPct: percent(num(r.ballots), num(r.registered)),
     }))
 
-    const declared = constituencies.filter((c) => c.totalVotes > 0)
+    // Was `totalVotes > 0`, which counted a seat as declared because ballots
+    // were cast in it. Under the eligibility rule that is no longer the same
+    // question: 39 seats received ballots and still produced no member. Counted
+    // from the classification so this figure and the public page's cannot drift.
+    const declared = constituencies.filter(isElectedSeat)
+    const reElection = constituencies.filter((c) => c.status === SEAT_STATUS.RE_ELECTION)
 
     return {
         meta: {
@@ -133,8 +181,13 @@ export async function buildElectionReport(supabase, { generatedBy = null } = {})
             turnoutPct: percent(totalBallots, turnoutDenominator),
             turnoutDenominator,
             totalConstituencies: num(stats.total_constituencies),
+            // Straight from SQL: constituencies where a candidate stood. Left
+            // as it is on purpose — it describes the ballot paper, not the
+            // outcome, and is still true after the eligibility rule.
             contestedConstituencies: num(stats.contested_constituencies),
             declaredConstituencies: declared.length,
+            reElectionConstituencies: reElection.length,
+            minVotesToBeElected: MIN_VOTES_TO_BE_ELECTED,
             totalCandidates: num(stats.total_candidates),
             activeCandidates: num(stats.active_candidates),
             // If these two ever differ, a voter is marked as having voted with

@@ -26,10 +26,15 @@ const RESULTS = [
     { constituency_id: 'c3', constituency_name: 'No Ballots', region: 'Ashanti', candidate_id: 'd7', candidate_name: 'Unvoted Two', is_active: false, votes: 0 },
 ]
 
+// get_constituency_turnout() is `from constituencies LEFT JOIN …`, so it
+// returns every constituency including one nobody stood in. The fixture used to
+// omit c4, which made it impossible to test the case that turns out to describe
+// 132 of the 276 real seats.
 const TURNOUT = [
     { constituency_id: 'c1', constituency_name: 'Clear Win', region: 'Greater Accra', code: 1, registered: 220, verified: 200, voted: 100, ballots: 100, candidates: 2 },
     { constituency_id: 'c2', constituency_name: 'Dead Heat', region: 'Ashanti', code: 2, registered: 100, verified: 80, voted: 40, ballots: 40, candidates: 3 },
     { constituency_id: 'c3', constituency_name: 'No Ballots', region: 'Ashanti', code: 3, registered: 50, verified: 40, voted: 0, ballots: 0, candidates: 2 },
+    { constituency_id: 'c4', constituency_name: 'Nobody Standing', region: 'Ahafo', code: 4, registered: 30, verified: 25, voted: 0, ballots: 0, candidates: 0 },
 ]
 
 const REGIONS = [
@@ -81,7 +86,9 @@ export function makeFakeSupabase({ votedOverride = null, settings = {} } = {}) {
         total_verified: 320,
         total_voted: votedOverride ?? TOTAL_BALLOTS,
         total_ballots: TOTAL_BALLOTS,
-        total_constituencies: CONSTITUENCIES.length,
+        // Every constituency on the register, not only the contested ones —
+        // `select count(*) from constituencies` in migration 0009.
+        total_constituencies: REGISTER_CONSTITUENCIES.length,
         total_candidates: RESULTS.length,
         active_candidates: RESULTS.filter((r) => r.is_active).length,
         contested_constituencies: 3,

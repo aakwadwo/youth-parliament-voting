@@ -41,7 +41,11 @@ export function summaryRows(report) {
         ['Turnout %', pct(summary.turnoutPct)],
         ['Total constituencies', num(summary.totalConstituencies)],
         ['Constituencies contested', num(summary.contestedConstituencies)],
-        ['Constituencies with ballots cast', num(summary.declaredConstituencies)],
+        // Relabelled: this counts seats that produced a member, which after the
+        // eligibility rule is no longer the same as "ballots were cast here".
+        ['Seats declared (elected)', num(summary.declaredConstituencies)],
+        ['Constituencies requiring a re-election', num(summary.reElectionConstituencies)],
+        ['Minimum votes to be elected', num(summary.minVotesToBeElected)],
         ['Total candidates', num(summary.totalCandidates)],
         ['Candidates standing', num(summary.activeCandidates)],
         [],
@@ -77,15 +81,43 @@ export function resultRows(report, { styled = true } = {}) {
         const winnerIds = new Set(c.winners.map((w) => w.id))
         const tied = c.winners.length > 1
 
+        // A constituency where nobody stood now reaches this sheet (it used to
+        // be absent entirely) and has no candidate rows to carry it, so it gets
+        // one row of its own. Otherwise the export would still be missing 132
+        // of the 276 seats.
+        if (c.candidates.length === 0) {
+            rows.push([
+                c.name,
+                c.region ?? '',
+                c.code ?? '',
+                '',
+                n(0),
+                p(0),
+                c.reason ?? 'Re-election',
+                n(0),
+                n(c.registered),
+                p(c.turnoutPct),
+            ])
+            continue
+        }
+
         for (const candidate of c.candidates) {
             rows.push([
                 c.name,
                 c.region ?? '',
                 c.code ?? '',
                 candidate.name,
+                // Historical tallies, exported exactly as counted. The
+                // eligibility rule changes the Outcome column and nothing else.
                 n(candidate.votes),
                 p(candidate.sharePct),
-                winnerIds.has(candidate.id) ? (tied ? 'Tied' : 'Elected') : '',
+                winnerIds.has(candidate.id)
+                    ? tied
+                        ? 'Tied'
+                        : 'Elected'
+                    : c.reElection
+                      ? 'Re-election'
+                      : '',
                 n(c.totalVotes),
                 n(c.registered),
                 p(c.turnoutPct),
@@ -157,8 +189,20 @@ export function winnerRows(report, { styled = true } = {}) {
     ]
 
     for (const c of report.constituencies) {
+        // No elected member. The candidate who led is still named, with the
+        // tally they actually received, because withdrawing the seat is not the
+        // same as erasing the count — an auditor reading this sheet has to be
+        // able to see both what happened and why it produced nobody.
         if (c.winners.length === 0) {
-            rows.push([c.name, c.region ?? '', 'No ballots cast', n(0), p(0), 'Undeclared'])
+            const leader = c.leadingCandidates?.[0]
+            rows.push([
+                c.name,
+                c.region ?? '',
+                leader ? `${leader.name} (led, not elected)` : 'No candidate stood',
+                n(leader?.votes ?? 0),
+                p(0),
+                c.reason ?? 'Re-election',
+            ])
             continue
         }
         const tied = c.winners.length > 1

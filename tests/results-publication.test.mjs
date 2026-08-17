@@ -253,8 +253,10 @@ test('once published, the same call returns the full public result', async () =>
 
     assert.ok(results, 'a published election returned no results')
     assert.equal(results.summary.totalVotes, 140)
-    assert.equal(results.summary.totalConstituencies, 3)
-    assert.equal(results.regions.length, 2)
+    // Four: the three contested seats plus the one nobody stood in, which the
+    // re-election rule brought into the published result.
+    assert.equal(results.summary.totalConstituencies, 4)
+    assert.equal(results.regions.length, 3)
 
     // The declaration is dated by when the Commission released it, not by when
     // voting closed — the page states both, and they are different instants.

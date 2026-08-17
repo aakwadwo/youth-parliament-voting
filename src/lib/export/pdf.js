@@ -154,6 +154,9 @@ function drawSummary(doc, report) {
         ['Turnout (of verified voters)', `${summary.turnoutPct}%`],
         ['Constituencies', summary.totalConstituencies],
         ['Constituencies contested', summary.contestedConstituencies],
+        ['Seats declared (elected)', summary.declaredConstituencies],
+        ['Re-elections required', summary.reElectionConstituencies],
+        ['Minimum votes to be elected', summary.minVotesToBeElected],
         ['Candidates standing', summary.activeCandidates],
     ]
 
@@ -293,8 +296,11 @@ function drawConstituencyResults(doc, report) {
         .fontSize(8.5)
         .fillColor(BRAND.muted)
         .text(
-            'Every candidate who stood is listed, including those who received no votes. ' +
-                'Where two or more candidates are tied on the highest tally, all are shown as tied.',
+            'Every candidate who stood is listed, including those who received no votes, and ' +
+                'every constituency is listed, including those where no candidate stood. Where ' +
+                'two or more candidates are tied on the highest tally, all are shown as tied. ' +
+                'A constituency requiring a re-election shows the reason above its tallies; the ' +
+                'votes recorded there are unchanged and are printed as counted.',
             PAGE.margin,
             doc.y,
             { width: contentWidth(doc) }
@@ -327,11 +333,23 @@ function drawConstituencyResults(doc, report) {
             )
         doc.y = headerY + 30
 
+        // The reason line, printed above the tallies so a reader meets the
+        // status before the numbers rather than inferring it from a missing
+        // ELECTED mark.
+        if (constituency.reElection && constituency.reason) {
+            ensureSpace(doc, 18)
+            doc.font('Helvetica-Bold')
+                .fontSize(8)
+                .fillColor(BRAND.ink)
+                .text(constituency.reason, PAGE.margin + 8, doc.y, { width: width - 16 })
+            doc.moveDown(0.35)
+        }
+
         if (constituency.candidates.length === 0) {
             doc.font('Helvetica-Oblique')
                 .fontSize(8.5)
                 .fillColor(BRAND.muted)
-                .text('No candidates stood in this constituency.', PAGE.margin + 8, doc.y)
+                .text('No candidate stood in this constituency.', PAGE.margin + 8, doc.y)
             doc.moveDown(1)
             continue
         }

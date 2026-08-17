@@ -107,8 +107,13 @@ export default function Results() {
                     <Stat label="Ballots counted" value={nf.format(summary.totalBallots)} />
                     <Stat label="Turnout" value={`${summary.turnoutPct}%`} />
                     <Stat
-                        label="Constituencies declared"
+                        label="Seats declared"
                         value={`${summary.declaredConstituencies} of ${summary.totalConstituencies}`}
+                        hint={
+                            summary.reElectionConstituencies
+                                ? `${summary.reElectionConstituencies} require a re-election`
+                                : undefined
+                        }
                     />
                 </StatGrid>
             ) : null}
@@ -210,16 +215,37 @@ export default function Results() {
                                         turnout
                                     </p>
                                 </div>
-                                {constituency.totalVotes === 0 ? (
-                                    <Badge variant="warning">No ballots cast</Badge>
+                                {/* Neutral for the same reason as the public
+                                    page: this is a settled outcome, not an
+                                    alert. "Tied" keeps the warning tone — it is
+                                    rare and does need an administrator's eye. */}
+                                {constituency.reElection ? (
+                                    <Badge variant="neutral">Re-election</Badge>
                                 ) : tied ? (
-                                    <Badge variant="warning">                                        Tied
-                                    </Badge>
+                                    <Badge variant="warning">Tied</Badge>
                                 ) : (
-                                    <Badge variant="success">                                        Declared
-                                    </Badge>
+                                    <Badge variant="success">Declared</Badge>
                                 )}
                             </div>
+
+                            {/* The same reason string the public page shows, so
+                                an administrator answering a query is reading
+                                the words the caller is looking at. */}
+                            {constituency.reElection && constituency.reason ? (
+                                <p className="border-b border-border bg-muted px-4 py-2.5 text-sm leading-relaxed text-muted-foreground sm:px-5">
+                                    {constituency.reason}
+                                    {constituency.leadingCandidates?.length ? (
+                                        <>
+                                            {' '}
+                                            Leading:{' '}
+                                            {constituency.leadingCandidates
+                                                .map((w) => `${w.name} (${nf.format(w.votes)})`)
+                                                .join(', ')}
+                                            . Votes are unchanged.
+                                        </>
+                                    ) : null}
+                                </p>
+                            ) : null}
 
                             <ul className="divide-y divide-border">
                                 {constituency.candidates.map((candidate) => {

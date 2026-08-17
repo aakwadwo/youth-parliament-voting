@@ -1,4 +1,11 @@
-import { resolveWinners, percent } from '@/lib/results-math'
+import {
+    resolveWinners,
+    percent,
+    classifySeat,
+    isElectedSeat,
+    SEAT_STATUS,
+    MIN_VOTES_TO_BE_ELECTED,
+} from '@/lib/results-math'
 import { areResultsPublic } from '@/lib/election-status'
 
 /**
@@ -50,8 +57,27 @@ export async function readPublicResults(supabase, election) {
  * @param {object} election  the public election object from `readElection`
  */
 export async function buildPublicResults(supabase, election) {
-    const { data, error } = await supabase.rpc('get_results')
+    // Two reads, and the second one is load-bearing.
+    //
+    // `get_results()` is `from constituencies JOIN candidates` — an inner join —
+    // so a constituency where nobody stood produces no rows and is invisible
+    // here. For 132 of the 276 seats that was the whole story of the election,
+    // and a published result that silently omits them is not the result.
+    //
+    // The constituency list is read separately rather than by widening
+    // `get_results()` to a LEFT JOIN: that RPC is also the source for the
+    // internal report and the three export formats, and changing its row shape
+    // changes all of them at once. Only `id, name, region` is selected — the
+    // register counts in `get_constituency_turnout()` would tell this page how
+    // many voters live in each seat, which no public surface has ever exposed.
+    const [{ data, error }, { data: allConstituencies, error: constituencyError }] =
+        await Promise.all([
+            supabase.rpc('get_results'),
+            supabase.from('constituencies').select('id, name, region').order('name'),
+        ])
+
     if (error) throw error
+    if (constituencyError) throw constituencyError
 
     // get_results already orders by constituency, then votes descending, then
     // candidate name — the order the result is declared in. It is preserved
@@ -77,9 +103,24 @@ export async function buildPublicResults(supabase, election) {
         })
     }
 
+    // Every constituency that fielded nobody, added with an empty field. They
+    // are seats in this election that produced no member, which is exactly what
+    // the seats above with a sub-threshold winner also are — so they belong in
+    // the same list, classified by the same rule, rather than in a footnote.
+    for (const constituency of allConstituencies ?? []) {
+        if (byConstituency.has(constituency.id)) continue
+        byConstituency.set(constituency.id, {
+            name: constituency.name,
+            region: constituency.region?.trim() || UNSPECIFIED_REGION,
+            totalVotes: 0,
+            candidates: [],
+        })
+    }
+
     const byRegion = new Map()
     let totalVotes = 0
     let declared = 0
+    let reElection = 0
     let tiedCount = 0
 
     for (const constituency of byConstituency.values()) {
@@ -98,20 +139,34 @@ export async function buildPublicResults(supabase, election) {
         }))
 
         const winners = resolveWinners(candidates)
-        const winnerKeys = new Set(winners.map((w) => w.key))
-        const tied = winners.length > 1
 
-        if (winners.length > 0) declared += 1
+        // The eligibility rule, applied once, here. `resolveWinners` above is
+        // untouched and still reports who led — this decides whether leading
+        // produced a member.
+        const seat = classifySeat({ candidateCount: candidates.length, winners })
+        const elected = isElectedSeat(seat)
+
+        // A seat going to a re-election has no winner to mark. The candidates
+        // and their tallies stay exactly as counted; what is withdrawn is the
+        // claim that one of them took the seat.
+        const winnerKeys = new Set(elected ? winners.map((w) => w.key) : [])
+        const tied = elected && winners.length > 1
+
+        if (elected) declared += 1
+        else reElection += 1
         if (tied) tiedCount += 1
 
         const shaped = {
             name: constituency.name,
             region: constituency.region,
             totalVotes: constituency.totalVotes,
+            status: seat.status,
+            reElection: seat.status === SEAT_STATUS.RE_ELECTION,
+            reason: seat.reason,
             // A seat with no ballots has no winner, and a seat where the top
             // two are level has two. Neither is quietly resolved to one name.
             tied,
-            winners: winners.map((w) => w.name),
+            winners: elected ? winners.map((w) => w.name) : [],
             candidates: candidates.map((c) => ({ ...c, isWinner: winnerKeys.has(c.key) })),
         }
 
@@ -148,10 +203,15 @@ export async function buildPublicResults(supabase, election) {
         publishedAt: election?.resultsPublishedAt ?? null,
         summary: {
             totalVotes,
+            // Now every constituency in the election, not only the ones that
+            // fielded a candidate — the denominator a reader assumes when they
+            // see "seats declared".
             totalConstituencies: byConstituency.size,
             declaredConstituencies: declared,
+            reElectionConstituencies: reElection,
             tiedConstituencies: tiedCount,
             totalRegions: regions.length,
+            minVotesToBeElected: MIN_VOTES_TO_BE_ELECTED,
         },
         regions,
     }

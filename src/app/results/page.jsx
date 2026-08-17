@@ -120,26 +120,48 @@ function ConstituencyResult({ constituency }) {
                 </div>
                 {/* The "Declared" pill is gone: it sat on 142 of 144 cards
                     saying the same thing, which is the definition of noise on a
-                    results page. The two states that are *not* the norm still
-                    carry a pill, because those are the ones a reader needs
-                    pointing out. */}
-                {constituency.totalVotes === 0 ? (
-                    <Badge variant="neutral">No votes cast</Badge>
+                    results page. The states that are *not* the norm still carry
+                    a pill, because those are the ones a reader needs pointing
+                    out — and a seat going to a re-election is now the most
+                    important of them. */}
+                {/* Neutral, not amber. A re-election is the settled state of
+                    172 of the 276 seats, not an alert — and a warning colour
+                    repeated down two-thirds of the page stops reading as a
+                    signal and starts reading as damage. The distinction from an
+                    elected seat is carried by the trophy and the green ELECTED
+                    label being absent, and by the text itself. */}
+                {constituency.reElection ? (
+                    <Badge variant="neutral">Re-election will take place</Badge>
                 ) : constituency.tied ? (
                     <Badge variant="warning">Tied</Badge>
                 ) : null}
             </div>
 
+            {/* The reason, stated on the card rather than inferred from an
+                empty candidate list. "Nobody stood" and "somebody stood and got
+                four votes" are the same outcome and completely different facts,
+                and a reader looking up their own constituency is entitled to
+                know which one happened here. */}
+            {constituency.reElection && constituency.reason ? (
+                <p className="border-b border-border bg-muted px-4 py-3 text-sm leading-relaxed text-muted-foreground sm:px-5">
+                    {constituency.reason}
+                    {constituency.candidates.length > 0
+                        ? '. The votes below were counted and are unchanged.'
+                        : '.'}
+                </p>
+            ) : null}
+
             {constituency.candidates.length === 0 ? (
                 <EmptyState
-                    title="No candidates stood"
-                    description="Nobody was registered as a candidate in this constituency."
+                    title="No candidate stood"
+                    description="Nobody was registered as a candidate in this constituency, so no ballot was issued here."
                 />
             ) : constituency.totalVotes === 0 ? (
                 <>
+                    {/* The reason banner above already says no candidate was
+                        elected; this only introduces the list. */}
                     <p className="border-b border-border px-4 py-3 text-sm leading-relaxed text-muted-foreground sm:px-5">
-                        No votes were recorded in this constituency, so no candidate has been
-                        elected. Everyone who stood is listed below.
+                        Everyone who stood is listed below.
                     </p>
                     <ul className="divide-y divide-border">
                         {constituency.candidates.map((candidate) => (
@@ -291,7 +313,7 @@ export default async function ResultsPage() {
                     ['Votes counted', nf.format(summary.totalVotes)],
                     ['Constituencies', nf.format(summary.totalConstituencies)],
                     ['Seats declared', nf.format(summary.declaredConstituencies)],
-                    ['Regions', nf.format(summary.totalRegions)],
+                    ['Re-elections', nf.format(summary.reElectionConstituencies ?? 0)],
                 ].map(([label, value]) => (
                     <div key={label} className="bg-card px-4 py-3">
                         <dt className="text-xs text-muted-foreground">{label}</dt>
@@ -318,13 +340,24 @@ export default async function ResultsPage() {
                     How a seat is decided
                 </h2>
                 <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                    The candidate with the highest number of votes in a constituency is elected.
-                    There is no minimum share a candidate has to reach, so a seat contested by
-                    several candidates can be won without the winner taking half of the votes
-                    cast. Where two or more candidates finish level on the highest tally, the seat
-                    is shown as tied and the {ELECTORAL_COMMISSION} decides how it is resolved.
-                    Where no votes were cast at all, no candidate is elected and the seat is shown
-                    as undeclared.
+                    The candidate with the highest number of votes in a constituency is elected,
+                    provided they received at least{' '}
+                    <span className="numeric font-medium text-foreground">
+                        {summary.minVotesToBeElected ?? 50}
+                    </span>{' '}
+                    votes. There is no minimum <em>share</em> a candidate has to reach, so a seat
+                    contested by several candidates can be won without the winner taking half of
+                    the votes cast. Where two or more candidates finish level on the highest tally,
+                    the seat is shown as tied and the {ELECTORAL_COMMISSION} decides how it is
+                    resolved.
+                </p>
+                <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                    A constituency goes to a <strong className="text-foreground">re-election</strong>{' '}
+                    where no candidate stood, where nobody received a vote, or where the leading
+                    candidate received fewer than{' '}
+                    <span className="numeric">{summary.minVotesToBeElected ?? 50}</span> votes. Every
+                    vote cast in those constituencies was counted and is published below unchanged
+                    — what has not been awarded is the seat.
                 </p>
             </section>
 
